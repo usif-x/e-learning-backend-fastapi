@@ -17,12 +17,12 @@ class Settings(BaseSettings):
     language: str = Field(default="en")
 
     # Database Configuration
-    db_connection: str = Field(default="mysql")
+    db_connection: str = Field(default="postgres")  # Options: mysql, postgresql, sqlite
     db_host: str = Field(default="127.0.0.1")
-    db_port: int = Field(default=3306)
-    db_database: str = Field(default="elearning")
-    db_username: str = Field(default="root")
-    db_password: str = Field(default="")
+    db_port: int = Field(default=5432)
+    db_database: str = Field(default="e-learning")
+    db_username: str = Field(default="home")
+    db_password: str = Field(default="123")
 
     # Cache & Session Configuration
     cache_driver: str = Field(default="file")

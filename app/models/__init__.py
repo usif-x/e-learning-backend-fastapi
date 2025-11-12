@@ -3,6 +3,7 @@ Models package initialization
 Import all models and setup relationships
 """
 
+from .admin import Admin
 from .categories import Category
 from .courses import Course
 
@@ -16,8 +17,4 @@ from .user import User
 setup_relationships()
 
 # Make models available at package level
-__all__ = [
-    "User",
-    "Category",
-    "Course",
-]
+__all__ = ["User", "Category", "Course", "Admin"]

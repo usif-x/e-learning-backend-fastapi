@@ -13,9 +13,10 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import the function to create the bot application
-from app.bot.main import create_bot_app
+# from app.bot.main import create_bot_app
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.core.decorator import DBException
 from app.core.limiter import custom_rate_limit_exceeded_handler, limiter
 from app.models import *
 from app.routers import routes
@@ -57,15 +58,15 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
 
-        # Create and start the bot
-        bot_app = create_bot_app()
-        app.state.bot_app = (
-            bot_app  # Store bot_app in app state to access it on shutdown
-        )
-        await bot_app.initialize()
-        await bot_app.updater.start_polling()
-        await bot_app.start()
-        logger.info("Telegram Bot has started successfully.")
+        # # Create and start the bot
+        # bot_app = create_bot_app()
+        # app.state.bot_app = (
+        #     bot_app  # Store bot_app in app state to access it on shutdown
+        # )
+        # await bot_app.initialize()
+        # await bot_app.updater.start_polling()
+        # await bot_app.start()
+        # logger.info("Telegram Bot has started successfully.")
 
     except Exception as e:
         logger.error(f"Failed during startup: {e}")
@@ -75,12 +76,12 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("Shutting down application...")
-    bot_app = app.state.bot_app
-    if bot_app.updater.running:
-        await bot_app.updater.stop()
-    await bot_app.stop()
-    await bot_app.shutdown()
-    logger.info("Telegram Bot has been shut down.")
+    # bot_app = app.state.bot_app
+    # if bot_app.updater.running:
+    #     await bot_app.updater.stop()
+    # await bot_app.stop()
+    # await bot_app.shutdown()
+    # logger.info("Telegram Bot has been shut down.")
 
 
 # Create FastAPI app instance with the new lifespan manager
@@ -101,6 +102,15 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)
+
+
+@app.exception_handler(DBException)
+async def db_exception_handler(request: Request, exc: DBException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.message},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

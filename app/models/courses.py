@@ -34,7 +34,7 @@ class Course(Base):
     has_certificate = Column(Boolean, default=False, nullable=False)
     is_azhar = Column(Boolean, default=False, nullable=False)
     prepaidable = Column(Boolean, default=False, nullable=False)
-    is_free = Column(Boolean, default=False, nullable=False, server_default="0")
+    is_free = Column(Boolean, default=False, nullable=False, server_default="false")
     visible_alone = Column(Boolean, default=False, nullable=False)
 
     study_year = Column(Integer, default=1, nullable=False)

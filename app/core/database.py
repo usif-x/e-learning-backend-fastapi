@@ -12,12 +12,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-DATABASE_URL = "mysql+pymysql://{user}:{password}@{host}:{port}/{database}".format(
-    user=settings.db_username,
-    password=settings.db_password,
-    host=settings.db_host,
-    port=settings.db_port,
-    database=settings.db_database,
+DATABASE_URL = (
+    "postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}".format(
+        user=settings.db_username,
+        password=settings.db_password,
+        host=settings.db_host,
+        port=settings.db_port,
+        database=settings.db_database,
+    )
 )
 
 # إخفاء كلمة المرور في السجلات
