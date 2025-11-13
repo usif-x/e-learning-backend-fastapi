@@ -9,14 +9,16 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import the function to create the bot application
 # from app.bot.main import create_bot_app
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, SessionLocal, engine
 from app.core.decorator import DBException
+from app.core.init import initialize_application
 from app.core.limiter import custom_rate_limit_exceeded_handler, limiter
 from app.models import *
 from app.routers import routes
@@ -27,6 +29,11 @@ logs_dir.mkdir(exist_ok=True)
 print(
     f"Logs directory created at: {logs_dir.absolute()}"
 )  # Add this to see the actual path
+
+# Create storage directory
+storage_dir = Path(__file__).parent / "storage"
+storage_dir.mkdir(exist_ok=True)
+print(f"Storage directory created at: {storage_dir.absolute()}")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +64,13 @@ async def lifespan(app: FastAPI):
         # Initialize Database
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
+
+        # Initialize application (create super admin if needed)
+        db = SessionLocal()
+        try:
+            initialize_application(db)
+        finally:
+            db.close()
 
         # # Create and start the bot
         # bot_app = create_bot_app()
@@ -166,6 +180,9 @@ async def health_check(request: Request):
 
 for router in routes:
     app.include_router(router)
+
+# Mount static files for serving uploaded images
+app.mount("/storage", StaticFiles(directory=str(storage_dir)), name="storage")
 
 # --- IMPORTANT CHANGE IN run_server ---
 

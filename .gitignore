@@ -203,3 +203,7 @@ __marimo__/
 .streamlit/secrets.toml
 logs/
 migrations/
+
+# Storage (uploaded files)
+storage/
+!storage/.gitkeep

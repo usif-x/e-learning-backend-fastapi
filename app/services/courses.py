@@ -3,6 +3,7 @@
 import math
 from typing import Optional
 
+from fastapi import UploadFile
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.categories import Category
@@ -11,6 +12,7 @@ from app.models.courses import Course
 from app.models.lecture import Lecture
 from app.models.user import User
 from app.schemas.courses import CourseCreate, CourseUpdate
+from app.utils.file_upload import file_upload_service
 
 
 class CourseService:
@@ -47,7 +49,7 @@ class CourseService:
 
     def get_all(
         self, page: int = 1, size: int = 20, current_user: Optional[User] = None
-    ) -> (list[Course], dict):
+    ) -> tuple[list[Course], dict]:
         """
         Retrieves a paginated list of courses.
         If a user is provided, it efficiently annotates each course with subscription status.
@@ -82,6 +84,12 @@ class CourseService:
 
         pagination = self._calculate_pagination(total=total, page=page, size=size)
         return courses, pagination
+
+    def get_course_by_id(self, course_id: int) -> Optional[Course]:
+        """
+        Retrieves a single course by its ID.
+        """
+        return self.db.query(Course).filter(Course.id == course_id).first()
 
     def create(self, course_in: CourseCreate) -> Course:
         """
@@ -167,3 +175,62 @@ class CourseService:
             .filter(Course.id == course_id)
             .first()
         )
+
+    async def upload_course_image(
+        self, course_id: int, image_file: UploadFile
+    ) -> Optional[Course]:
+        """
+        Upload and attach an image to a course.
+
+        Args:
+            course_id: ID of the course
+            image_file: The uploaded image file
+
+        Returns:
+            Updated course or None if course not found
+        """
+        # Get the course
+        db_course = self.get(course_id=course_id)
+        if not db_course:
+            return None
+
+        # Delete old image if exists
+        if db_course.image:
+            file_upload_service.delete_image(db_course.image)
+
+        # Save new image
+        uuid_filename, relative_path = await file_upload_service.save_image(
+            image_file, folder="courses"
+        )
+
+        # Update course with new image path
+        db_course.image = relative_path
+        self.db.add(db_course)
+        self.db.commit()
+        self.db.refresh(db_course)
+
+        return db_course
+
+    async def delete_course_image(self, course_id: int) -> Optional[Course]:
+        """
+        Delete the image attached to a course.
+
+        Args:
+            course_id: ID of the course
+
+        Returns:
+            Updated course or None if course not found
+        """
+        db_course = self.get(course_id=course_id)
+        if not db_course:
+            return None
+
+        # Delete the image file if exists
+        if db_course.image:
+            file_upload_service.delete_image(db_course.image)
+            db_course.image = None
+            self.db.add(db_course)
+            self.db.commit()
+            self.db.refresh(db_course)
+
+        return db_course

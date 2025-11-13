@@ -5,9 +5,11 @@ from typing import Union
 from fastapi import (  # Add Union and Security
     APIRouter,
     Depends,
+    File,
     HTTPException,
     Query,
     Security,
+    UploadFile,
 )
 from fastapi.security import HTTPAuthorizationCredentials  # For type hinting
 from sqlalchemy.orm import Session
@@ -69,6 +71,15 @@ def read_courses(
     return {"courses": courses, **pagination}
 
 
+@router.get("/{course_id}", response_model=CourseResponse)
+def get_course_or_404(course_id: int, db: Session = Depends(get_db)) -> Course:
+    service = CourseService(db)
+    course = service.get_course_by_id(course_id=course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
+
 @router.patch("/{course_id}", response_model=CourseResponse)
 def update_course(
     course_id: int, course_in: CourseUpdate, db: Session = Depends(get_db)
@@ -116,3 +127,44 @@ async def get_full_course_content(
 
     # We don't need to check if it exists, because the dependency already did.
     return course_with_content
+
+
+@router.post("/{course_id}/upload-image", response_model=CourseResponse)
+async def upload_course_image(
+    course_id: int,
+    image: UploadFile = File(..., description="Course image file"),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload an image for a course.
+    The image will be saved with a UUID filename in the storage/courses directory.
+
+    Allowed formats: JPG, JPEG, PNG, GIF, WEBP, SVG
+    Maximum size: 5MB
+    """
+    service = CourseService(db)
+    try:
+        updated_course = await service.upload_course_image(
+            course_id=course_id, image_file=image
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if updated_course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    return updated_course
+
+
+@router.delete("/{course_id}/delete-image", response_model=CourseResponse)
+async def delete_course_image(course_id: int, db: Session = Depends(get_db)):
+    """
+    Delete the image attached to a course.
+    """
+    service = CourseService(db)
+    updated_course = await service.delete_course_image(course_id=course_id)
+
+    if updated_course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    return updated_course

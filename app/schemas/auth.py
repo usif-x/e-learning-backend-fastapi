@@ -230,6 +230,44 @@ class DirectLoginRequest(BaseModel):
         return values
 
 
+# Admin login schemas
+class AdminLoginRequest(BaseModel):
+    """Admin login with username/email and password"""
+
+    username_or_email: str = Field(
+        ..., description="Admin username or email", min_length=3, max_length=100
+    )
+    password: str = Field(..., description="Admin password", min_length=1)
+    remember_me: bool = Field(default=False, description="Remember login")
+
+
+class AdminResponse(BaseModel):
+    """Admin response data"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    username: str
+    email: str
+    is_verified: bool
+    level: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminAuthResponse(BaseModel):
+    """Admin authentication response"""
+
+    success: bool
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    admin: AdminResponse
+    message: str
+
+
 # Response schemas
 class AuthResponse(BaseModel):
     """Standard authentication response"""

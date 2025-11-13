@@ -13,6 +13,8 @@ from app.core.dependencies import get_current_user
 from app.core.security import jwt_manager  # Updated import
 from app.models.user import User
 from app.schemas.auth import (
+    AdminAuthResponse,
+    AdminLoginRequest,
     AuthFlowStatus,
     AuthResponse,
     DirectLoginRequest,
@@ -124,3 +126,22 @@ async def verify_telegram_debug(
         ),
         "match": calculated_hash == received_hash,
     }
+
+
+# ==================== ADMIN AUTHENTICATION ====================
+
+
+@router.post("/admin/login", response_model=AdminAuthResponse)
+async def admin_login(
+    request: AdminLoginRequest, db: Session = Depends(get_db)
+) -> AdminAuthResponse:
+    """
+    Admin login with username or email and password.
+
+    - **username_or_email**: Admin username or email
+    - **password**: Admin password
+    - **remember_me**: Keep login session longer
+
+    Returns admin access token and admin profile.
+    """
+    return auth_service.admin_login(request, db)

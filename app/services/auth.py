@@ -9,14 +9,19 @@ from typing import Any, Dict, Optional, Tuple
 
 import redis
 from fastapi import HTTPException, status
+from jose import jwt
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.hasher import PasswordHelper
 from app.core.security import jwt_manager, token_blacklist
+from app.models.admin import Admin
 from app.models.user import User
 from app.schemas.auth import (
+    AdminAuthResponse,
+    AdminLoginRequest,
+    AdminResponse,
     AuthFlowStatus,
     AuthResponse,
     DirectLoginRequest,
@@ -293,7 +298,7 @@ class AuthService:
                 parent_phone_number=request.parent_phone_number,
                 profile_picture=telegram_data.get("photo_url"),
                 is_active=True,
-                is_verified=not settings.verify_user_model,
+                is_verified=settings.verify_user_model,
                 status=request.role or settings.authorization_default_role,
                 telegram_id=str(telegram_data["id"]),
                 telegram_username=telegram_data.get("username"),
@@ -808,6 +813,116 @@ class AuthService:
             identifier=user.identifier,
             login_methods=self._get_user_login_methods(user),
         )
+
+    def admin_login(self, request: AdminLoginRequest, db: Session) -> AdminAuthResponse:
+        """
+        Admin login with username or email and password
+        """
+        try:
+            # Find admin by username or email
+            admin = (
+                db.query(Admin)
+                .filter(
+                    or_(
+                        Admin.username == request.username_or_email,
+                        Admin.email == request.username_or_email,
+                    )
+                )
+                .first()
+            )
+
+            if not admin:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials",
+                )
+
+            # Verify password
+            if not self.password_helper.check_password(
+                request.password, admin.password
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials",
+                )
+
+            # Check if admin is verified
+            if not admin.is_verified:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin account is not verified",
+                )
+
+            # Generate tokens with admin expiration (manually since Admin model is different from User)
+            login_time = datetime.utcnow()
+
+            # Create access token
+            access_expire = login_time + timedelta(days=settings.jwt_admin_expiration)
+            access_payload = {
+                "sub": str(admin.id),
+                "admin_id": admin.id,
+                "username": admin.username,
+                "email": admin.email,
+                "type": "admin",
+                "level": admin.level,
+                "iat": int(login_time.timestamp()),
+                "exp": int(access_expire.timestamp()),
+                "iss": settings.jwt_issuer,
+            }
+            access_token = jwt.encode(
+                access_payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+            )
+
+            # Create refresh token
+            refresh_expire = login_time + timedelta(
+                days=settings.jwt_admin_expiration * 3
+            )
+            refresh_payload = {
+                "sub": str(admin.id),
+                "admin_id": admin.id,
+                "username": admin.username,
+                "type": "admin_refresh",
+                "iat": int(login_time.timestamp()),
+                "exp": int(refresh_expire.timestamp()),
+                "iss": settings.jwt_issuer,
+            }
+            refresh_token = jwt.encode(
+                refresh_payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+            )
+
+            logger.info(
+                f"Admin login successful: {admin.username} (Level: {admin.level})"
+            )
+
+            return AdminAuthResponse(
+                success=True,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                expires_in=int(
+                    timedelta(days=settings.jwt_admin_expiration).total_seconds()
+                ),
+                admin=AdminResponse(
+                    id=admin.id,
+                    name=admin.name,
+                    username=admin.username,
+                    email=admin.email,
+                    is_verified=admin.is_verified,
+                    level=admin.level,
+                    created_at=admin.created_at,
+                    updated_at=admin.updated_at,
+                ),
+                message="Admin login successful",
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Admin login error: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Admin login failed",
+            )
 
 
 auth_service = AuthService()
