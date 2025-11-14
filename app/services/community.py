@@ -39,29 +39,33 @@ class CommunityService:
                 return code
 
     def create_community(
-        self, community_in: CommunityCreate, creator_id: int
+        self, community_in: CommunityCreate, admin_id: int
     ) -> Community:
-        """Create a new community"""
+        """Create a new community (admin only)"""
         # Create community
         community = Community(
             **community_in.model_dump(),
             invite_code=(
                 self.generate_invite_code() if not community_in.is_public else None
             ),
-            members_count=1,  # Creator is first member
+            members_count=0,  # Will increment after adding admin
         )
 
         self.db.add(community)
         self.db.flush()  # Get the ID
 
-        # Add creator as owner
+        # Add the admin who created the community as the first member
         membership = CommunityMember(
             community_id=community.id,
-            user_id=creator_id,
-            role="owner",
+            admin_id=admin_id,
+            user_id=None,
+            role="member",
             joined_via="direct",
         )
         self.db.add(membership)
+
+        # Update member count
+        community.members_count = 1
 
         self.db.commit()
         self.db.refresh(community)
@@ -157,33 +161,14 @@ class CommunityService:
         return communities, pagination
 
     def update_community(
-        self, community_id: int, community_in: CommunityUpdate, user_id: int
+        self, community_id: int, community_in: CommunityUpdate, admin_id: int
     ) -> Optional[Community]:
-        """Update a community (requires admin/owner role)"""
+        """Update a community (admin only)"""
         community = (
             self.db.query(Community).filter(Community.id == community_id).first()
         )
         if not community:
             return None
-
-        # Check if user is owner or admin
-        membership = (
-            self.db.query(CommunityMember)
-            .filter(
-                and_(
-                    CommunityMember.community_id == community_id,
-                    CommunityMember.user_id == user_id,
-                    CommunityMember.role.in_(["owner", "admin"]),
-                )
-            )
-            .first()
-        )
-
-        if not membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only community owners and admins can update community settings",
-            )
 
         # Update fields
         for field, value in community_in.model_dump(exclude_unset=True).items():
@@ -307,33 +292,14 @@ class CommunityService:
         return True
 
     async def upload_community_image(
-        self, community_id: int, image_file: UploadFile, user_id: int
+        self, community_id: int, image_file: UploadFile, admin_id: int
     ) -> Optional[Community]:
-        """Upload community profile image"""
+        """Upload community profile image (admin only)"""
         community = (
             self.db.query(Community).filter(Community.id == community_id).first()
         )
         if not community:
             return None
-
-        # Check permissions
-        membership = (
-            self.db.query(CommunityMember)
-            .filter(
-                and_(
-                    CommunityMember.community_id == community_id,
-                    CommunityMember.user_id == user_id,
-                    CommunityMember.role.in_(["owner", "admin"]),
-                )
-            )
-            .first()
-        )
-
-        if not membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only community owners and admins can upload images",
-            )
 
         # Delete old image if exists
         if community.image:
@@ -351,33 +317,14 @@ class CommunityService:
         return community
 
     def regenerate_invite_code(
-        self, community_id: int, user_id: int
+        self, community_id: int, admin_id: int
     ) -> Optional[Community]:
-        """Regenerate invite code for a private community"""
+        """Regenerate invite code for a private community (admin only)"""
         community = (
             self.db.query(Community).filter(Community.id == community_id).first()
         )
         if not community:
             return None
-
-        # Check permissions - only owner and admin can regenerate
-        membership = (
-            self.db.query(CommunityMember)
-            .filter(
-                and_(
-                    CommunityMember.community_id == community_id,
-                    CommunityMember.user_id == user_id,
-                    CommunityMember.role.in_(["owner", "admin"]),
-                )
-            )
-            .first()
-        )
-
-        if not membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only community owners and admins can regenerate invite code",
-            )
 
         # Check if community is private
         if community.is_public:

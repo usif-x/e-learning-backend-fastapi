@@ -14,7 +14,8 @@ class CommunityMember(Base):
     community_id = Column(
         Integer, ForeignKey("communities.id"), nullable=False, index=True
     )
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    admin_id = Column(Integer, ForeignKey("admins.id"), nullable=True, index=True)
 
     # Role in community
     role = Column(
@@ -31,9 +32,14 @@ class CommunityMember(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # Unique constraint: one user can only be a member once per community
+    # Unique constraint: one user/admin can only be a member once per community
     __table_args__ = (
-        UniqueConstraint("community_id", "user_id", name="unique_community_member"),
+        UniqueConstraint(
+            "community_id", "user_id", name="unique_community_user_member"
+        ),
+        UniqueConstraint(
+            "community_id", "admin_id", name="unique_community_admin_member"
+        ),
     )
 
     def __repr__(self):

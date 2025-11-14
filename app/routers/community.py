@@ -41,14 +41,14 @@ router = APIRouter(
 def create_community(
     community_in: CommunityCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin),
+    current_admin=Depends(get_current_admin),
 ):
     """
     Create a new community.
-    User becomes the owner of the community.
+    Only admins can create communities.
     """
     service = CommunityService(db)
-    return service.create_community(community_in, current_user.id)
+    return service.create_community(community_in, current_admin.id)
 
 
 @router.get("/", response_model=CommunityListResponse)
@@ -62,6 +62,7 @@ def list_communities(
 ):
     """
     Get list of communities.
+    Available to all users (authenticated or not).
     Optionally filter by public/private and search by name.
     """
     service = CommunityService(db)
@@ -78,7 +79,10 @@ def get_community(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user),
 ):
-    """Get a community by ID"""
+    """
+    Get a community by ID.
+    Available to all users (authenticated or not).
+    """
     service = CommunityService(db)
     user_id = current_user.id if current_user else None
     community = service.get_community(community_id, user_id)
@@ -97,14 +101,14 @@ def update_community(
     community_id: int,
     community_in: CommunityUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_admin=Depends(get_current_admin),
 ):
     """
     Update a community.
-    Only owners and admins can update community settings.
+    Only admins can update community settings.
     """
     service = CommunityService(db)
-    community = service.update_community(community_id, community_in, current_user.id)
+    community = service.update_community(community_id, community_in, current_admin.id)
 
     if not community:
         raise HTTPException(
@@ -155,15 +159,15 @@ async def upload_community_image(
     community_id: int,
     image: UploadFile = File(..., description="Community profile image"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_admin=Depends(get_current_admin),
 ):
     """
     Upload a community profile image.
-    Only owners and admins can upload images.
+    Only admins can upload images.
     """
     service = CommunityService(db)
     community = await service.upload_community_image(
-        community_id, image, current_user.id
+        community_id, image, current_admin.id
     )
 
     if not community:
