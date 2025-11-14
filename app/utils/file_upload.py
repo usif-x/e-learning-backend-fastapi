@@ -9,7 +9,7 @@ from fastapi import HTTPException, UploadFile
 
 # Allowed file extensions
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"}
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".webm"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB
 
