@@ -14,6 +14,7 @@ from app.models.community_member import CommunityMember
 from app.models.post import Post
 from app.models.post_media import PostMedia
 from app.models.post_reaction import PostReaction
+from app.models.reported_post import ReportedPost
 from app.models.user import User
 from app.schemas.community import (
     CommunityCreate,
@@ -390,12 +391,15 @@ class PostService:
             community_id=community_id,
             user_id=user_id,
             content=post_in.content,
+            post_status=(
+                "pending" if not community.auto_accept_posts else "accepted"
+            ),  # All posts start as pending or accepted based on community setting
         )
 
         self.db.add(post)
 
-        # Update community posts count
-        community.posts_count += 1
+        # Don't update community posts count yet - only count accepted posts
+        # community.posts_count += 1
 
         self.db.commit()
         self.db.refresh(post)
@@ -409,13 +413,14 @@ class PostService:
         size: int = 20,
         user_id: Optional[int] = None,
     ) -> Tuple[List[Post], dict]:
-        """Get posts from a community with pagination"""
+        """Get posts from a community with pagination (only accepted posts)"""
         query = (
             self.db.query(Post)
             .filter(
                 and_(
                     Post.community_id == community_id,
                     Post.is_deleted == False,
+                    Post.post_status == "accepted",  # Only show accepted posts
                 )
             )
             .options(
@@ -468,7 +473,7 @@ class PostService:
         post_id: int,
         user_id: Optional[int] = None,
     ) -> Optional[Post]:
-        """Get a specific post from a community by ID"""
+        """Get a specific post from a community by ID (only accepted posts)"""
         post = (
             self.db.query(Post)
             .filter(
@@ -476,6 +481,7 @@ class PostService:
                     Post.id == post_id,
                     Post.community_id == community_id,
                     Post.is_deleted == False,
+                    Post.post_status == "accepted",  # Only show accepted posts
                 )
             )
             .options(
@@ -510,13 +516,14 @@ class PostService:
         page: int = 1,
         size: int = 20,
     ) -> Tuple[List[Post], dict]:
-        """Get all posts created by a specific user across all communities"""
+        """Get all posts created by a specific user across all communities (only accepted posts)"""
         query = (
             self.db.query(Post)
             .filter(
                 and_(
                     Post.user_id == user_id,
                     Post.is_deleted == False,
+                    Post.post_status == "accepted",  # Only show accepted posts
                 )
             )
             .options(
@@ -756,6 +763,258 @@ class PostService:
         self.db.commit()
 
         return True
+
+    # ==================== Post Moderation Methods ====================
+
+    def get_pending_posts(
+        self,
+        page: int = 1,
+        size: int = 20,
+        community_id: Optional[int] = None,
+    ) -> Tuple[List[Post], dict]:
+        """Get pending posts for admin review"""
+        query = (
+            self.db.query(Post)
+            .filter(
+                and_(
+                    Post.post_status == "pending",
+                    Post.is_deleted == False,
+                )
+            )
+            .options(
+                selectinload(Post.author),
+                selectinload(Post.community),
+                selectinload(Post.media),
+            )
+        )
+
+        # Filter by community if specified
+        if community_id:
+            query = query.filter(Post.community_id == community_id)
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * size
+        posts = query.order_by(Post.created_at.asc()).offset(offset).limit(size).all()
+
+        # Pagination metadata
+        total_pages = math.ceil(total / size)
+        pagination = {
+            "total": total,
+            "page": page,
+            "size": size,
+            "total_pages": total_pages,
+        }
+
+        return posts, pagination
+
+    def accept_post(self, post_id: int, admin_id: int) -> Optional[Post]:
+        """Accept a pending post (admin only)"""
+        post = self.db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+
+        if post.post_status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Post is already {post.post_status}",
+            )
+
+        # Update post status
+        post.post_status = "accepted"
+
+        # Increment community posts count
+        community = (
+            self.db.query(Community).filter(Community.id == post.community_id).first()
+        )
+        if community:
+            community.posts_count += 1
+
+        self.db.commit()
+        self.db.refresh(post)
+
+        return post
+
+    def reject_post(self, post_id: int, admin_id: int) -> Optional[Post]:
+        """Reject a pending post (admin only)"""
+        post = self.db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+
+        if post.post_status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Post is already {post.post_status}",
+            )
+
+        # Update post status
+        post.post_status = "rejected"
+
+        self.db.commit()
+        self.db.refresh(post)
+
+        return post
+
+    # ==================== Post Reporting Methods ====================
+
+    def report_post(self, post_id: int, user_id: int, reason: str) -> ReportedPost:
+        """Report a post"""
+        # Check if post exists
+        post = self.db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+
+        # Check if user already reported this post
+        existing_report = (
+            self.db.query(ReportedPost)
+            .filter(
+                and_(
+                    ReportedPost.post_id == post_id,
+                    ReportedPost.reporter_id == user_id,
+                    ReportedPost.report_status == "pending",
+                )
+            )
+            .first()
+        )
+
+        if existing_report:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You have already reported this post",
+            )
+
+        # Create report
+        report = ReportedPost(
+            post_id=post_id,
+            reporter_id=user_id,
+            reason=reason,
+            report_status="pending",
+        )
+
+        self.db.add(report)
+        self.db.commit()
+        self.db.refresh(report)
+
+        return report
+
+    def get_reported_posts(
+        self,
+        page: int = 1,
+        size: int = 20,
+        report_status: Optional[str] = None,
+    ) -> Tuple[List[ReportedPost], dict]:
+        """Get reported posts for admin review"""
+        query = self.db.query(ReportedPost).options(
+            selectinload(ReportedPost.post).selectinload(Post.author),
+            selectinload(ReportedPost.post).selectinload(Post.community),
+            selectinload(ReportedPost.reporter),
+        )
+
+        # Filter by status if specified
+        if report_status:
+            query = query.filter(ReportedPost.report_status == report_status)
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * size
+        reports = (
+            query.order_by(ReportedPost.created_at.desc())
+            .offset(offset)
+            .limit(size)
+            .all()
+        )
+
+        # Pagination metadata
+        total_pages = math.ceil(total / size)
+        pagination = {
+            "total": total,
+            "page": page,
+            "size": size,
+            "total_pages": total_pages,
+        }
+
+        return reports, pagination
+
+    def delete_reported_post(self, report_id: int, admin_id: int) -> bool:
+        """Delete a reported post and mark report as deleted (admin only)"""
+        report = (
+            self.db.query(ReportedPost).filter(ReportedPost.id == report_id).first()
+        )
+        if not report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Report not found",
+            )
+
+        # Get the post
+        post = self.db.query(Post).filter(Post.id == report.post_id).first()
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+
+        # Soft delete the post
+        post.is_deleted = True
+
+        # Update community posts count if post was accepted
+        if post.post_status == "accepted":
+            community = (
+                self.db.query(Community)
+                .filter(Community.id == post.community_id)
+                .first()
+            )
+            if community:
+                community.posts_count = max(0, community.posts_count - 1)
+
+        # Update report status
+        report.report_status = "deleted"
+        report.reviewed_by = admin_id
+        report.reviewed_at = datetime.utcnow()
+
+        self.db.commit()
+
+        return True
+
+    def pass_report(self, report_id: int, admin_id: int) -> ReportedPost:
+        """Mark a report as passed/ignored (admin only)"""
+        report = (
+            self.db.query(ReportedPost).filter(ReportedPost.id == report_id).first()
+        )
+        if not report:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Report not found",
+            )
+
+        if report.report_status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Report is already {report.report_status}",
+            )
+
+        # Update report status
+        report.report_status = "passed"
+        report.reviewed_by = admin_id
+        report.reviewed_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(report)
+
+        return report
 
 
 class CommentService:

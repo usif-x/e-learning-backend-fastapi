@@ -174,7 +174,7 @@ class JWTManager:
                 options={"verify_exp": True},
             )
 
-            # Verify token type
+            # Verify token type (check 'type' field, not 'role')
             if payload.get("type") != token_type:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

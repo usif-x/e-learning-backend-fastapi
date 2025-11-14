@@ -1,5 +1,5 @@
 # app/models/post.py
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -23,6 +23,9 @@ class Post(Base):
     is_pinned = Column(Boolean, default=False, nullable=False)
     is_edited = Column(Boolean, default=False, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
+
+    # Moderation Status: pending, accepted, rejected
+    post_status = Column(String(20), default="pending", nullable=False, index=True)
 
     # Statistics
     reactions_count = Column(Integer, default=0, nullable=False)

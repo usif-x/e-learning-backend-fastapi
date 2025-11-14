@@ -13,6 +13,7 @@ from .post_reaction import PostReaction
 
 # Import and setup relationships
 from .relations import setup_relationships
+from .reported_post import ReportedPost
 from .user import User
 
 # Setup all relationships after models are imported
@@ -27,5 +28,6 @@ __all__ = [
     "Post",
     "PostMedia",
     "PostReaction",
+    "ReportedPost",
     "User",
 ]

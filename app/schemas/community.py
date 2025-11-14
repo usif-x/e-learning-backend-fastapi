@@ -140,6 +140,7 @@ class PostResponse(PostBase):
     user_id: int
     is_pinned: bool
     is_edited: bool
+    post_status: str  # pending, accepted, rejected
     reactions_count: int
     comments_count: int
     created_at: datetime
@@ -219,3 +220,35 @@ class CommentListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+# ==================== Post Reporting Schemas ====================
+
+
+class ReportPostRequest(BaseModel):
+    reason: str = Field(..., min_length=10, max_length=500)
+
+
+class ReportedPostResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    post_id: int
+    reporter_id: int
+    reviewed_by: Optional[int]
+    reason: str
+    report_status: str  # pending, passed, deleted
+    created_at: datetime
+    reviewed_at: Optional[datetime]
+
+    # Related data
+    post: Optional[PostResponse] = None
+    reporter: Optional[PostAuthorInfo] = None
+
+
+class ReportedPostListResponse(BaseModel):
+    reports: List[ReportedPostResponse]
+    total: int
+    page: int
+    size: int
+    total_pages: int

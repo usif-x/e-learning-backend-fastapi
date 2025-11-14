@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin, get_current_user
+from app.core.dependencies import get_current_admin, get_current_user, get_optional_user
+from app.models.admin import Admin
 from app.models.user import User
 from app.schemas.community import (
     CommentCreate,
@@ -23,6 +24,9 @@ from app.schemas.community import (
     PostResponse,
     PostUpdate,
     ReactionCreate,
+    ReportedPostListResponse,
+    ReportedPostResponse,
+    ReportPostRequest,
     UpdateMemberRoleRequest,
 )
 from app.services.community import CommentService, CommunityService, PostService
@@ -32,6 +36,108 @@ router = APIRouter(
     tags=["Communities"],
     responses={404: {"description": "Not found"}},
 )
+
+
+# ==================== Admin-Only Endpoints ====================
+# NOTE: These MUST be defined before parameterized routes like /{community_id}/posts/{post_id}
+# to avoid route matching conflicts where "admin" is parsed as a community_id
+
+
+@router.get(
+    "/admin/posts/pending",
+    response_model=PostListResponse,
+    summary="Get pending posts (Admin)",
+)
+def get_pending_posts(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    community_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """
+    Get pending posts for admin review.
+    Can filter by community_id.
+    Admin only.
+    """
+    service = PostService(db)
+    posts, pagination = service.get_pending_posts(page, size, community_id)
+    return {"posts": posts, **pagination}
+
+
+@router.post("/admin/posts/{post_id}/accept", response_model=PostResponse)
+def accept_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Accept a pending post.
+    Admin only.
+    """
+    service = PostService(db)
+    return service.accept_post(post_id, current_admin.id)
+
+
+@router.post("/admin/posts/{post_id}/reject", response_model=PostResponse)
+def reject_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Reject a pending post.
+    Admin only.
+    """
+    service = PostService(db)
+    return service.reject_post(post_id, current_admin.id)
+
+
+@router.get("/admin/reports", response_model=ReportedPostListResponse)
+def get_reported_posts(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, pattern="^(pending|passed|deleted)$"),
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Get reported posts for admin review.
+    Can filter by report status.
+    Admin only.
+    """
+    service = PostService(db)
+    reports, pagination = service.get_reported_posts(page, size, status)
+    return {"reports": reports, **pagination}
+
+
+@router.delete("/admin/reports/{report_id}/delete", status_code=204)
+def delete_reported_post(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Delete a reported post and mark report as deleted.
+    Admin only.
+    """
+    service = PostService(db)
+    service.delete_reported_post(report_id, current_admin.id)
+    return None
+
+
+@router.post("/admin/reports/{report_id}/pass", response_model=ReportedPostResponse)
+def pass_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Mark a report as passed/ignored (post is fine).
+    Admin only.
+    """
+    service = PostService(db)
+    return service.pass_report(report_id, current_admin.id)
 
 
 # ==================== Community Endpoints ====================
@@ -58,7 +164,7 @@ def list_communities(
     is_public: Optional[bool] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get list of communities.
@@ -77,7 +183,7 @@ def list_communities(
 def get_community(
     community_id: int,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get a community by ID.
@@ -227,7 +333,7 @@ def list_posts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get posts from a community with pagination.
@@ -244,7 +350,7 @@ def get_post(
     community_id: int,
     post_id: int,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get a specific post from a community by ID.
@@ -398,7 +504,7 @@ def list_comments(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get comments for a post with pagination.
@@ -446,3 +552,23 @@ def delete_comment(
     service = CommentService(db)
     service.delete_comment(comment_id, current_user.id)
     return None
+
+
+# ==================== Post Reporting Endpoints ====================
+
+
+@router.post(
+    "/posts/{post_id}/report", response_model=ReportedPostResponse, status_code=201
+)
+def report_post(
+    post_id: int,
+    report_in: ReportPostRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Report a post for inappropriate content.
+    User must be authenticated.
+    """
+    service = PostService(db)
+    return service.report_post(post_id, current_user.id, report_in.reason)

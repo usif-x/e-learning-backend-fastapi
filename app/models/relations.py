@@ -9,6 +9,7 @@ from .community_member import CommunityMember
 from .post import Post
 from .post_media import PostMedia
 from .post_reaction import PostReaction
+from .reported_post import ReportedPost
 from .user import User
 
 
@@ -113,4 +114,25 @@ def setup_relationships():
         "Comment",
         remote_side=[Comment.id],
         backref="replies",
+    )
+
+    # 12. Post to ReportedPosts (One-to-Many)
+    Post.reports = relationship(
+        "ReportedPost",
+        back_populates="post",
+        cascade="all, delete-orphan",
+    )
+    ReportedPost.post = relationship("Post", back_populates="reports")
+
+    # 13. User to ReportedPosts (One-to-Many) - as reporter
+    User.reported_posts = relationship(
+        "ReportedPost",
+        back_populates="reporter",
+        cascade="all, delete-orphan",
+        foreign_keys="ReportedPost.reporter_id",
+    )
+    ReportedPost.reporter = relationship(
+        "User",
+        back_populates="reported_posts",
+        foreign_keys="ReportedPost.reporter_id",
     )

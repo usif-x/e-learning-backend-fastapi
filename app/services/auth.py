@@ -863,8 +863,9 @@ class AuthService:
                 "admin_id": admin.id,
                 "username": admin.username,
                 "email": admin.email,
-                "type": "admin",
+                "role": "admin",
                 "level": admin.level,
+                "type": "access",  # Add type field for token verification
                 "iat": int(login_time.timestamp()),
                 "exp": int(access_expire.timestamp()),
                 "iss": settings.jwt_issuer,
@@ -881,7 +882,8 @@ class AuthService:
                 "sub": str(admin.id),
                 "admin_id": admin.id,
                 "username": admin.username,
-                "type": "admin_refresh",
+                "role": "admin",
+                "type": "refresh",  # Add type field for refresh token
                 "iat": int(login_time.timestamp()),
                 "exp": int(refresh_expire.timestamp()),
                 "iss": settings.jwt_issuer,

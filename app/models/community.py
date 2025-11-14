@@ -31,6 +31,9 @@ class Community(Base):
     # Statistics (can be computed but useful for performance)
     members_count = Column(Integer, default=0, nullable=False)
     posts_count = Column(Integer, default=0, nullable=False)
+    auto_accept_posts = Column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
 
     # Timestamps
     created_at = Column(
