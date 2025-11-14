@@ -1,4 +1,5 @@
 from .admin import router as admin_router
+from .ai import router as ai_router
 from .auth import router as auth_router
 from .community import router as community_router
 from .user import router as user_router
@@ -8,4 +9,5 @@ routes = [
     auth_router,
     user_router,
     community_router,
+    ai_router,
 ]

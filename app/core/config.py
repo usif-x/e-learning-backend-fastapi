@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
     redis_rate_limit: str = Field(default="20/minute", env="REDIS_RATE_LIMIT")
 
+    # AI Service Configuration
+    ai_api_key: str = Field(default="", env="AI_API_KEY")
+    ai_api_endpoint: str = Field(default="", env="AI_API_ENDPOINT")
+    ai_model: str = Field(default="", env="AI_MODEL")
+
     # Models
     verify_user_model: bool = Field(default=True, env="VERIFY_USER_MODEL")
 
