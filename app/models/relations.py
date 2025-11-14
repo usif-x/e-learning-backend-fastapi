@@ -3,12 +3,12 @@
 from sqlalchemy.orm import relationship
 
 # Import all relevant models
-from .categories import Category
-from .course_prepaidable_user import CoursePrepaidableUser
-from .course_subscription import CourseSubscription  # <-- Import the new model
-from .courses import Course
-from .lecture import Lecture
-from .lecture_content import LectureContent
+from .comment import Comment
+from .community import Community
+from .community_member import CommunityMember
+from .post import Post
+from .post_media import PostMedia
+from .post_reaction import PostReaction
 from .user import User
 
 
@@ -16,82 +16,101 @@ def setup_relationships():
     """
     Configure all SQLAlchemy relationships between models.
     """
-    # --- Existing Relationships ---
-    Category.courses = relationship(
-        "Course",
-        back_populates="category",
+
+    # --- Community System Relationships ---
+
+    # 1. Community to Members (One-to-Many)
+    Community.members = relationship(
+        "CommunityMember",
+        back_populates="community",
         cascade="all, delete-orphan",
-        lazy="selectin",
     )
-    Course.category = relationship("Category", back_populates="courses")
-    Course.related_course = relationship("Course", remote_side=[Course.id])
+    CommunityMember.community = relationship("Community", back_populates="members")
 
-    # --- NEW: User <-> CourseSubscription <-> Course Relationships ---
-
-    # 1. User to CourseSubscription (One-to-Many)
-    # Allows you to see all subscription details for a user: user.subscriptions
-    User.subscriptions = relationship(
-        "CourseSubscription", back_populates="user", cascade="all, delete-orphan"
+    # 2. User to Community Memberships (One-to-Many)
+    User.community_memberships = relationship(
+        "CommunityMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
+    CommunityMember.user = relationship("User", back_populates="community_memberships")
 
-    # 2. Course to CourseSubscription (One-to-Many)
-    # Allows you to see all subscription details for a course: course.subscriptions
-    Course.subscriptions = relationship(
-        "CourseSubscription", back_populates="course", cascade="all, delete-orphan"
+    # 3. Direct Many-to-Many: User <-> Community (for convenience)
+    User.communities = relationship(
+        "Community",
+        secondary="community_members",
+        back_populates="users",
+        viewonly=True,
     )
-
-    # 3. CourseSubscription back to User and Course (Many-to-One)
-    CourseSubscription.user = relationship("User", back_populates="subscriptions")
-    CourseSubscription.course = relationship("Course", back_populates="subscriptions")
-
-    # 4. Direct Many-to-Many links (for convenience)
-    # Allows you to get a list of subscribed courses directly: user.subscribed_courses
-    User.subscribed_courses = relationship(
-        "Course",
-        secondary="course_subscriptions",  # The name of the association table
-        back_populates="subscribers",
-        viewonly=True,  # Important: modifications should happen on the subscription object
-    )
-    # Allows you to get a list of subscribed users directly: course.subscribers
-    Course.subscribers = relationship(
+    Community.users = relationship(
         "User",
-        secondary="course_subscriptions",
-        back_populates="subscribed_courses",
+        secondary="community_members",
+        back_populates="communities",
         viewonly=True,
     )
 
-    User.prepaidable_courses = relationship(
-        "Course",
-        secondary="course_prepaidable_users",
-        back_populates="prepaidable_users",
-        viewonly=True,
-    )
-    # Allows you to get a list of prepaidable users directly: course.prepaidable_users
-    Course.prepaidable_users = relationship(
-        "User",
-        secondary="course_prepaidable_users",
-        back_populates="prepaidable_courses",
-        viewonly=True,
-    )
-
-    Course.lectures = relationship(
-        "Lecture",
-        back_populates="course",
+    # 4. Community to Posts (One-to-Many)
+    Community.posts = relationship(
+        "Post",
+        back_populates="community",
         cascade="all, delete-orphan",
-        order_by="Lecture.position",  # <-- Automatically order lectures
+        order_by="Post.created_at.desc()",
     )
-    Lecture.course = relationship("Course", back_populates="lectures")
+    Post.community = relationship("Community", back_populates="posts")
 
-    # 2. Lecture to LectureContent (One-to-Many)
-    Lecture.contents = relationship(
-        "LectureContent",
-        back_populates="lecture",
+    # 5. User to Posts (One-to-Many)
+    User.posts = relationship(
+        "Post",
+        back_populates="author",
         cascade="all, delete-orphan",
-        order_by="LectureContent.position",  # <-- Automatically order content
     )
-    LectureContent.lecture = relationship("Lecture", back_populates="contents")
+    Post.author = relationship("User", back_populates="posts")
 
-    # 3. Self-referential relationship for content dependencies (for future use)
-    LectureContent.dependency = relationship(
-        "LectureContent", remote_side=[LectureContent.id], backref="dependents"
+    # 6. Post to Media (One-to-Many)
+    Post.media = relationship(
+        "PostMedia",
+        back_populates="post",
+        cascade="all, delete-orphan",
+        order_by="PostMedia.position",
+    )
+    PostMedia.post = relationship("Post", back_populates="media")
+
+    # 7. Post to Reactions (One-to-Many)
+    Post.reactions = relationship(
+        "PostReaction",
+        back_populates="post",
+        cascade="all, delete-orphan",
+    )
+    PostReaction.post = relationship("Post", back_populates="reactions")
+
+    # 8. User to Reactions (One-to-Many)
+    User.post_reactions = relationship(
+        "PostReaction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    PostReaction.user = relationship("User", back_populates="post_reactions")
+
+    # 9. Post to Comments (One-to-Many)
+    Post.comments = relationship(
+        "Comment",
+        back_populates="post",
+        cascade="all, delete-orphan",
+        order_by="Comment.created_at",
+    )
+    Comment.post = relationship("Post", back_populates="comments")
+
+    # 10. User to Comments (One-to-Many)
+    User.comments = relationship(
+        "Comment",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
+    Comment.author = relationship("User", back_populates="comments")
+
+    # 11. Comment self-referential (for replies)
+    Comment.parent = relationship(
+        "Comment",
+        remote_side=[Comment.id],
+        backref="replies",
     )
