@@ -305,6 +305,42 @@ Response:
 }
 ```
 
+#### Get My Posts
+
+```http
+GET /api/communities/posts/me?page=1&size=20
+Authorization: Bearer <token>
+
+Response:
+{
+  "posts": [
+    {
+      "id": 10,
+      "community_id": 3,
+      "user_id": 5,
+      "content": "My latest post",
+      "is_pinned": false,
+      "reactions_count": 5,
+      "comments_count": 2,
+      "created_at": "2024-01-05T00:00:00",
+      "community": {
+        "id": 3,
+        "name": "Community Name"
+      },
+      "author": {...},
+      "media": [...],
+      "user_reaction": "like"
+    }
+  ],
+  "total": 25,
+  "page": 1,
+  "size": 20,
+  "total_pages": 2
+}
+
+Note: Returns all posts by the current user across all communities.
+```
+
 #### Update Post
 
 ```http

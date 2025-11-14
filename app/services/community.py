@@ -557,6 +557,60 @@ class PostService:
 
         return post
 
+    def get_user_posts(
+        self,
+        user_id: int,
+        page: int = 1,
+        size: int = 20,
+    ) -> Tuple[List[Post], dict]:
+        """Get all posts created by a specific user across all communities"""
+        query = (
+            self.db.query(Post)
+            .filter(
+                and_(
+                    Post.user_id == user_id,
+                    Post.is_deleted == False,
+                )
+            )
+            .options(
+                selectinload(Post.author),
+                selectinload(Post.media),
+                selectinload(Post.community),
+            )
+        )
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * size
+        posts = query.order_by(Post.created_at.desc()).offset(offset).limit(size).all()
+
+        # Add user reaction info (user always sees their own reactions)
+        for post in posts:
+            reaction = (
+                self.db.query(PostReaction)
+                .filter(
+                    and_(
+                        PostReaction.post_id == post.id,
+                        PostReaction.user_id == user_id,
+                    )
+                )
+                .first()
+            )
+            post.user_reaction = reaction.reaction_type if reaction else None
+
+        # Pagination metadata
+        total_pages = math.ceil(total / size)
+        pagination = {
+            "total": total,
+            "page": page,
+            "size": size,
+            "total_pages": total_pages,
+        }
+
+        return posts, pagination
+
     def update_post(
         self, post_id: int, post_in: PostUpdate, user_id: int
     ) -> Optional[Post]:

@@ -351,6 +351,22 @@ def remove_reaction(
     return None
 
 
+@router.get("/posts/me", response_model=PostListResponse)
+def get_my_posts(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get all posts created by the current user across all communities.
+    Returns posts ordered by creation date (newest first).
+    """
+    service = PostService(db)
+    posts, pagination = service.get_user_posts(current_user.id, page, size)
+    return {"posts": posts, **pagination}
+
+
 # ==================== Comment Endpoints ====================
 
 
