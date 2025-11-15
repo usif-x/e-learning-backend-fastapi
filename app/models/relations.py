@@ -3,12 +3,17 @@
 from sqlalchemy.orm import relationship
 
 # Import all relevant models
+from .category import Category
 from .comment import Comment
 from .community import Community
 from .community_member import CommunityMember
+from .course import Course
+from .lecture import Lecture
+from .lecture_content import LectureContent
 from .post import Post
 from .post_media import PostMedia
 from .post_reaction import PostReaction
+from .quiz_attempt import QuizAttempt
 from .reported_post import ReportedPost
 from .user import User
 
@@ -136,3 +141,71 @@ def setup_relationships():
         back_populates="reported_posts",
         foreign_keys="ReportedPost.reporter_id",
     )
+
+    # --- Course System Relationships ---
+
+    # 14. Category to Courses (One-to-Many)
+    Category.courses = relationship(
+        "Course",
+        back_populates="category",
+        cascade="all, delete-orphan",
+    )
+    Course.category = relationship("Category", back_populates="courses")
+
+    # 15. Course to Lectures (One-to-Many)
+    Course.lectures = relationship(
+        "Lecture",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        order_by="Lecture.position",
+    )
+    Lecture.course = relationship("Course", back_populates="lectures")
+
+    # 16. Lecture to Contents (One-to-Many)
+    Lecture.contents = relationship(
+        "LectureContent",
+        back_populates="lecture",
+        cascade="all, delete-orphan",
+        order_by="LectureContent.position",
+    )
+    LectureContent.lecture = relationship("Lecture", back_populates="contents")
+
+    # 17. Course to LectureContents (One-to-Many) - direct reference
+    Course.contents = relationship(
+        "LectureContent",
+        back_populates="course",
+        cascade="all, delete-orphan",
+    )
+    LectureContent.course = relationship("Course", back_populates="contents")
+
+    # 18. User to QuizAttempts (One-to-Many)
+    User.quiz_attempts = relationship(
+        "QuizAttempt",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    QuizAttempt.user = relationship("User", back_populates="quiz_attempts")
+
+    # 19. LectureContent to QuizAttempts (One-to-Many)
+    LectureContent.attempts = relationship(
+        "QuizAttempt",
+        back_populates="content",
+        cascade="all, delete-orphan",
+    )
+    QuizAttempt.content = relationship("LectureContent", back_populates="attempts")
+
+    # 20. Course to QuizAttempts (One-to-Many)
+    Course.quiz_attempts = relationship(
+        "QuizAttempt",
+        back_populates="course",
+        cascade="all, delete-orphan",
+    )
+    QuizAttempt.course = relationship("Course", back_populates="quiz_attempts")
+
+    # 21. Lecture to QuizAttempts (One-to-Many)
+    Lecture.quiz_attempts = relationship(
+        "QuizAttempt",
+        back_populates="lecture",
+        cascade="all, delete-orphan",
+    )
+    QuizAttempt.lecture = relationship("Lecture", back_populates="quiz_attempts")
