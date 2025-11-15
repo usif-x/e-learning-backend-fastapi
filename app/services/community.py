@@ -341,6 +341,63 @@ class CommunityService:
 
         return community
 
+    def get_community_members(
+        self,
+        community_id: int,
+        page: int = 1,
+        size: int = 20,
+        role: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> Tuple[List[CommunityMember], dict]:
+        """Get members of a community with pagination.
+
+        - `role`: optional filter by role (owner/admin/moderator/member)
+        - `search`: optional case-insensitive search against user's full_name or telegram_username
+        Returns a tuple of (members_list, pagination_dict)
+        """
+        query = (
+            self.db.query(CommunityMember)
+            .filter(CommunityMember.community_id == community_id)
+            .options(selectinload(CommunityMember.user))
+        )
+
+        # Filter by role if provided
+        if role:
+            query = query.filter(CommunityMember.role == role)
+
+        # Search by user name or telegram username
+        if search:
+            # Join with User to filter on user fields
+            query = query.join(User).filter(
+                or_(
+                    User.full_name.ilike(f"%{search}%"),
+                    User.telegram_username.ilike(f"%{search}%"),
+                )
+            )
+
+        # Total count for pagination
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * size
+        members = (
+            query.order_by(CommunityMember.joined_at.asc())
+            .offset(offset)
+            .limit(size)
+            .all()
+        )
+
+        # Pagination metadata
+        total_pages = math.ceil(total / size) if size > 0 else 0
+        pagination = {
+            "total": total,
+            "page": page,
+            "size": size,
+            "total_pages": total_pages,
+        }
+
+        return members, pagination
+
 
 class PostService:
     def __init__(self, db: Session):
@@ -629,6 +686,31 @@ class PostService:
 
         # Soft delete
         post.is_deleted = True
+
+        # Update community posts count
+        if post.community:
+            post.community.posts_count = max(0, post.community.posts_count - 1)
+
+        self.db.commit()
+
+        return True
+
+    def admin_delete_post(self, post_id: int, admin_id: int) -> bool:
+        """Admin delete a post (soft delete)"""
+        post = (
+            self.db.query(Post)
+            .filter(Post.id == post_id)
+            .options(selectinload(Post.community))
+            .first()
+        )
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+        # Soft delete
+        self.db.delete(post)
+        self.db.flush()
 
         # Update community posts count
         if post.community:

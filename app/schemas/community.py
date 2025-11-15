@@ -94,6 +94,14 @@ class UpdateMemberRoleRequest(BaseModel):
     role: str = Field(..., pattern="^(admin|moderator|member)$")
 
 
+class CommunityMemberListResponse(BaseModel):
+    members: List[CommunityMemberResponse]
+    total: int
+    page: int
+    size: int
+    total_pages: int
+
+
 # ==================== Post Schemas ====================
 
 

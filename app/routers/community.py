@@ -15,6 +15,7 @@ from app.schemas.community import (
     CommentUpdate,
     CommunityCreate,
     CommunityListResponse,
+    CommunityMemberListResponse,
     CommunityMemberResponse,
     CommunityResponse,
     CommunityUpdate,
@@ -138,6 +139,21 @@ def pass_report(
     """
     service = PostService(db)
     return service.pass_report(report_id, current_admin.id)
+
+
+@router.delete("/admin/posts/{post_id}", status_code=204)
+def admin_delete_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(get_current_admin),
+):
+    """
+    Admin delete a post.
+    Admin only.
+    """
+    service = PostService(db)
+    service.admin_delete_post(post_id, current_admin.id)
+    return None
 
 
 # ==================== Community Endpoints ====================
@@ -306,6 +322,30 @@ def regenerate_invite_code(
         )
 
     return community
+
+
+@router.get("/{community_id}/members", response_model=CommunityMemberListResponse)
+def get_community_members(
+    community_id: int,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    role: Optional[str] = Query(None, pattern="^(owner|admin|moderator|member)$"),
+    search: Optional[str] = Query(
+        None, description="Search by user name or telegram username"
+    ),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Get members of a community with pagination.
+    Supports filtering by role and searching by user name/username.
+    Available to all users (authenticated or not).
+    """
+    service = CommunityService(db)
+    members, pagination = service.get_community_members(
+        community_id, page, size, role, search
+    )
+    return {"members": members, **pagination}
 
 
 # ==================== Post Endpoints ====================
