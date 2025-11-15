@@ -164,8 +164,21 @@ class QuizAttemptService:
             if not quiz_attempt:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Active attempt not found",
+                    detail="Active attempt not found or already completed",
                 )
+        else:
+            # If no attempt_id provided, check for any incomplete attempt
+            quiz_attempt = (
+                self.db.query(QuizAttempt)
+                .filter(
+                    and_(
+                        QuizAttempt.content_id == content_id,
+                        QuizAttempt.user_id == user_id,
+                        QuizAttempt.is_completed == 0,
+                    )
+                )
+                .first()
+            )
 
         # If no existing attempt, check max attempts
         if not quiz_attempt and content.max_attempts:
@@ -241,6 +254,7 @@ class QuizAttemptService:
             quiz_attempt.time_taken = attempt_in.time_taken
             quiz_attempt.completed_at = datetime.utcnow()
             quiz_attempt.is_completed = 1
+            self.db.flush()  # Ensure update is flushed to database
         else:
             # Create new completed attempt
             quiz_attempt = QuizAttempt(

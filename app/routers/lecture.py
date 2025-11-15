@@ -320,6 +320,9 @@ def start_quiz_attempt(
             detail=message,
         )
 
+    # Expire all to ensure we get fresh data from database
+    db.expire_all()
+
     # Check for existing incomplete attempt
     incomplete_attempt = (
         db.query(QuizAttempt)
@@ -335,19 +338,38 @@ def start_quiz_attempt(
 
     # Create new attempt record if no incomplete attempt exists
     if not incomplete_attempt:
-        new_attempt = QuizAttempt(
-            user_id=current_user.id,
-            content_id=content_id,
-            course_id=course_id,
-            lecture_id=lecture_id,
-            total_questions=len(content.questions) if content.questions else 0,
-            is_completed=0,
-            started_at=datetime.utcnow(),
-        )
-        db.add(new_attempt)
-        db.commit()
-        db.refresh(new_attempt)
-        attempt_id = new_attempt.id
+        try:
+            new_attempt = QuizAttempt(
+                user_id=current_user.id,
+                content_id=content_id,
+                course_id=course_id,
+                lecture_id=lecture_id,
+                total_questions=len(content.questions) if content.questions else 0,
+                is_completed=0,
+                started_at=datetime.utcnow(),
+            )
+            db.add(new_attempt)
+            db.commit()
+            db.refresh(new_attempt)
+            attempt_id = new_attempt.id
+        except Exception:
+            # If commit failed (e.g., concurrent request), rollback and re-query
+            db.rollback()
+            incomplete_attempt = (
+                db.query(QuizAttempt)
+                .filter(
+                    and_(
+                        QuizAttempt.content_id == content_id,
+                        QuizAttempt.user_id == current_user.id,
+                        QuizAttempt.is_completed == 0,
+                    )
+                )
+                .first()
+            )
+            if incomplete_attempt:
+                attempt_id = incomplete_attempt.id
+            else:
+                raise
     else:
         attempt_id = incomplete_attempt.id
 
@@ -549,6 +571,9 @@ def submit_quiz_attempt(
         attempt_in,
         attempt_id=attempt_in.attempt_id,
     )
+
+    # Expire all objects to ensure fresh state from database
+    db.expire_all()
 
     # Get quiz content for settings and questions
     content = (
