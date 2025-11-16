@@ -335,16 +335,24 @@ class UserAllQuizzesAnalytics(BaseModel):
 
 
 class PracticeQuizRequest(BaseModel):
-    """Request to generate practice quiz from incorrect answers"""
+    """Request to generate practice quiz from incorrect answers, specific lectures, or specific quizzes"""
 
     course_id: Optional[int] = Field(
-        None, description="Filter by specific course (optional)"
+        None, description="Course ID (required when selecting specific quizzes)"
+    )
+    lecture_ids: Optional[List[int]] = Field(
+        None, description="Specific lecture IDs to generate questions from (optional)"
+    )
+    quiz_ids: Optional[List[int]] = Field(
+        None,
+        description="Specific quiz content IDs to generate questions from (optional)",
     )
     question_count: int = Field(
         default=10, ge=1, le=50, description="Number of questions to include"
     )
     include_unanswered: bool = Field(
-        default=True, description="Include unanswered questions"
+        default=True,
+        description="Include unanswered questions (only for incorrect questions mode)",
     )
 
 

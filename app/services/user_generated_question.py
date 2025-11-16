@@ -194,8 +194,14 @@ class UserGeneratedQuestionService:
             )
 
         # Append new questions to existing ones
-        question_set.questions = question_set.questions + new_questions
+        current_questions = question_set.questions or []
+        question_set.questions = current_questions + new_questions
         question_set.total_questions = len(question_set.questions)
+
+        # Mark the questions field as modified for SQLAlchemy
+        from sqlalchemy.orm import attributes
+
+        attributes.flag_modified(question_set, "questions")
 
         self.db.commit()
         self.db.refresh(question_set)

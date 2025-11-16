@@ -26,7 +26,7 @@ from app.schemas.lecture import (
     UserAllQuizzesAnalytics,
     UserQuizAnalytics,
 )
-from app.schemas.user import UserResponse
+from app.schemas.user import UpdatePasswordRequest, UserProfileResponse, UserResponse
 from app.services.course_enrollment import CourseEnrollmentService
 from app.services.practice_quiz import PracticeQuizService
 from app.services.user import UserService
@@ -60,6 +60,52 @@ def charge_user_wallet(user_id: int, amount: float, db: Session = Depends(get_db
     if not success:
         raise HTTPException(status_code=400, detail="Insufficient funds")
     return {"message": "Wallet charged successfully"}
+
+
+@router.get("/me", response_model=UserProfileResponse)
+def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    """
+    Get current user's detailed profile information.
+    """
+    return current_user
+
+
+@router.put("/me/password")
+def update_password(
+    request: UpdatePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update current user's password.
+    Requires current password verification.
+    """
+    # Validate new password confirmation
+    if request.new_password != request.confirm_password:
+        raise HTTPException(
+            status_code=400, detail="New password and confirmation do not match"
+        )
+
+    # Validate password length
+    if len(request.new_password) < 6:
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 6 characters long"
+        )
+
+    service = UserService(db)
+    success = service.update_password(
+        user_id=current_user.id,
+        current_password=request.current_password,
+        new_password=request.new_password,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Current password is incorrect or user has no password set",
+        )
+
+    return {"message": "Password updated successfully"}
 
 
 @router.get("/me/quiz-analytics", response_model=UserAllQuizzesAnalytics)
@@ -236,32 +282,77 @@ def generate_practice_quiz(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Generate a practice quiz from user's incorrect/unanswered questions.
+    Generate a practice quiz from user's incorrect/unanswered questions, specific lectures, or specific quizzes.
     This is user-specific and NOT added to course content.
     Returns the practice quiz ID for later retrieval.
+
+    Modes:
+    - quiz_ids: Generate from specific quiz content IDs (requires course_id)
+    - lecture_ids: Generate from all quizzes in specific lectures
+    - neither: Generate from user's incorrect/unanswered questions (original behavior)
     """
     service = PracticeQuizService(db)
 
-    # Get incorrect questions
-    incorrect_questions = service.get_incorrect_questions(
-        user_id=current_user.id,
-        course_id=request.course_id,
-        question_count=request.question_count,
-        include_unanswered=request.include_unanswered,
-    )
+    # Determine generation mode
+    if request.quiz_ids:
+        # Generate from specific quizzes
+        if not request.course_id:
+            raise HTTPException(
+                status_code=400,
+                detail="course_id is required when selecting specific quizzes",
+            )
 
-    if not incorrect_questions:
-        raise HTTPException(
-            status_code=404,
-            detail="No incorrect or unanswered questions found"
-            + (f" for course {request.course_id}" if request.course_id else ""),
+        questions = service.get_questions_from_quizzes(
+            quiz_ids=request.quiz_ids,
+            question_count=request.question_count,
         )
+
+        if not questions:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No quiz questions found in the selected quizzes: {request.quiz_ids}",
+            )
+
+        error_message = f" for selected quizzes {request.quiz_ids}"
+    elif request.lecture_ids:
+        # Generate from specific lectures
+        questions = service.get_questions_from_lectures(
+            lecture_ids=request.lecture_ids,
+            question_count=request.question_count,
+        )
+
+        if not questions:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No quiz questions found in the selected lectures: {request.lecture_ids}",
+            )
+
+        error_message = f" for selected lectures {request.lecture_ids}"
+    else:
+        # Generate from incorrect/unanswered questions (original behavior)
+        questions = service.get_incorrect_questions(
+            user_id=current_user.id,
+            course_id=request.course_id,
+            question_count=request.question_count,
+            include_unanswered=request.include_unanswered,
+        )
+
+        if not questions:
+            raise HTTPException(
+                status_code=404,
+                detail="No incorrect or unanswered questions found"
+                + (f" for course {request.course_id}" if request.course_id else ""),
+            )
+
+        error_message = f" for course {request.course_id}" if request.course_id else ""
 
     # Create practice quiz (user-specific, not in course content)
     practice_quiz = service.create_practice_content(
         user_id=current_user.id,
-        questions=incorrect_questions,
+        questions=questions,
         course_id=request.course_id,
+        lecture_ids=request.lecture_ids,
+        quiz_ids=request.quiz_ids,
     )
 
     # Get questions without answers for the attempt

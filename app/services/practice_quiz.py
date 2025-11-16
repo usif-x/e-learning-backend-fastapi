@@ -100,25 +100,163 @@ class PracticeQuizService:
             if len(incorrect_questions) >= question_count:
                 break
 
-        return incorrect_questions[:question_count]
+    def get_questions_from_lectures(
+        self,
+        lecture_ids: List[int],
+        question_count: int = 10,
+    ) -> List[dict]:
+        """
+        Get questions from specific lectures.
+        Returns questions from all quiz content in the specified lectures.
+        """
+        # Get all quiz content from the specified lectures
+        quiz_contents = (
+            self.db.query(LectureContent)
+            .filter(
+                and_(
+                    LectureContent.lecture_id.in_(lecture_ids),
+                    LectureContent.content_type == "quiz",
+                    LectureContent.questions.isnot(None),
+                )
+            )
+            .all()
+        )
+
+        # Collect all questions from these lectures
+        all_questions = []
+        seen_questions = set()  # Track unique questions (by text)
+
+        for content in quiz_contents:
+            if not content.questions:
+                continue
+
+            for question in content.questions:
+                question_text = question.get("question", "")
+
+                # Avoid duplicates
+                if question_text in seen_questions:
+                    continue
+
+                seen_questions.add(question_text)
+
+                all_questions.append(
+                    {
+                        "question": question_text,
+                        "options": question.get("options", []),
+                        "correct_answer": question.get("correct_answer"),
+                        "explanation_en": question.get("explanation_en"),
+                        "explanation_ar": question.get("explanation_ar"),
+                        "source_course_id": content.course_id,
+                        "source_lecture_id": content.lecture_id,
+                        "source_quiz_title": content.title,
+                    }
+                )
+
+        # Randomly select questions if we have more than requested
+        import random
+
+        if len(all_questions) > question_count:
+            all_questions = random.sample(all_questions, question_count)
+
+        return all_questions
+
+    def get_questions_from_quizzes(
+        self,
+        quiz_ids: List[int],
+        question_count: int = 10,
+    ) -> List[dict]:
+        """
+        Get questions from specific quiz content IDs.
+        Returns questions from the specified quiz contents.
+        """
+        # Get the specified quiz contents
+        quiz_contents = (
+            self.db.query(LectureContent)
+            .filter(
+                and_(
+                    LectureContent.id.in_(quiz_ids),
+                    LectureContent.content_type == "quiz",
+                    LectureContent.questions.isnot(None),
+                )
+            )
+            .all()
+        )
+
+        # Collect all questions from these specific quizzes
+        all_questions = []
+        seen_questions = set()  # Track unique questions (by text)
+
+        for content in quiz_contents:
+            if not content.questions:
+                continue
+
+            for question in content.questions:
+                question_text = question.get("question", "")
+
+                # Avoid duplicates
+                if question_text in seen_questions:
+                    continue
+
+                seen_questions.add(question_text)
+
+                all_questions.append(
+                    {
+                        "question": question_text,
+                        "options": question.get("options", []),
+                        "correct_answer": question.get("correct_answer"),
+                        "explanation_en": question.get("explanation_en"),
+                        "explanation_ar": question.get("explanation_ar"),
+                        "source_course_id": content.course_id,
+                        "source_lecture_id": content.lecture_id,
+                        "source_quiz_title": content.title,
+                    }
+                )
+
+        # Randomly select questions if we have more than requested
+        import random
+
+        if len(all_questions) > question_count:
+            all_questions = random.sample(all_questions, question_count)
+
+        return all_questions
 
     def create_practice_content(
         self,
         user_id: int,
         questions: List[dict],
         course_id: Optional[int] = None,
+        lecture_ids: Optional[List[int]] = None,
+        quiz_ids: Optional[List[int]] = None,
     ) -> PracticeQuiz:
         """
         Create a practice quiz for a specific user.
         Does NOT add to course content - this is user-specific practice only.
         """
-        # Build title and description
-        title = f"Practice Quiz - Review Mistakes" + (
-            f" (Course {course_id})" if course_id else ""
-        )
-        description = (
-            "Practice quiz generated from your incorrect and unanswered questions"
-        )
+        # Build title and description based on generation mode
+        if quiz_ids:
+            # Generated from specific quizzes
+            title = f"Practice Quiz - Selected Quizzes"
+            if course_id:
+                title += f" (Course {course_id})"
+            description = (
+                f"Practice quiz generated from {len(quiz_ids)} selected quiz(es)"
+            )
+        elif lecture_ids:
+            # Generated from specific lectures
+            title = f"Practice Quiz - Selected Lectures"
+            if course_id:
+                title += f" (Course {course_id})"
+            description = (
+                f"Practice quiz generated from {len(lecture_ids)} selected lecture(s)"
+            )
+        else:
+            # Generated from incorrect answers
+            title = f"Practice Quiz - Review Mistakes" + (
+                f" (Course {course_id})" if course_id else ""
+            )
+            description = (
+                "Practice quiz generated from your incorrect and unanswered questions"
+            )
 
         # Create a PracticeQuiz record (user-specific, not added to course)
         practice_quiz = PracticeQuiz(
