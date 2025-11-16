@@ -40,6 +40,7 @@ def init_super_admin(db: Session) -> None:
             username="admin",  # Default username
             email=settings.admin_default_email,
             password=PasswordHelper.hash_password(settings.admin_default_password),
+            telegram_id=settings.admin_default_telegram_id,
             is_verified=True,
             level=999,  # Super admin level
         )

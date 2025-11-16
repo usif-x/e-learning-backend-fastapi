@@ -12,6 +12,7 @@ class Admin(Base):
     username = Column(String(100), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
+    telegram_id = Column(String(50), unique=True, nullable=True)
     is_verified = Column(Boolean, default=settings.verify_user_model, nullable=False)
     level = Column(Integer, default=1, nullable=False)
     created_at = Column(

@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     admin_default_name: str = Field(default="Super Admin")
     admin_default_email: str = Field(default="admin@example.com")
     admin_default_password: str = Field(default="Admin@123")
+    admin_default_telegram_id: str = Field(default="")
 
     # Payment Gateway
     payment_provider: str = Field(default="fawaterk")

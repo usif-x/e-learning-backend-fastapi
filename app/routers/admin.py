@@ -51,6 +51,7 @@ async def get_current_admin_profile(
         name=current_admin.name,
         username=current_admin.username,
         email=current_admin.email,
+        telegram_id=current_admin.telegram_id,
         level=current_admin.level,
         is_verified=current_admin.is_verified,
         created_at=current_admin.created_at,

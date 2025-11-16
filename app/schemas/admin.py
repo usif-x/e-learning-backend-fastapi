@@ -11,6 +11,7 @@ class Admin(BaseModel):
     name: str
     username: str
     email: str
+    telegram_id: Optional[str] = None
     level: int
     is_verified: bool
     created_at: datetime
@@ -26,6 +27,7 @@ class CreateAdmin(BaseModel):
     username: str
     email: str
     password: str
+    telegram_id: Optional[str] = None
     level: int
     is_verified: bool
 
@@ -48,5 +50,6 @@ class UpdateAdmin(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
+    telegram_id: Optional[str] = None
     level: Optional[int] = None
     is_verified: Optional[bool] = None
