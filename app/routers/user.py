@@ -288,8 +288,9 @@ def generate_practice_quiz(
 
     Modes:
     - quiz_ids: Generate from specific quiz content IDs (requires course_id)
-    - lecture_ids: Generate from all quizzes in specific lectures
-    - neither: Generate from user's incorrect/unanswered questions (original behavior)
+    - lecture_ids: Generate from user's incorrect/unanswered questions in specific lectures
+    - course_id: Generate from user's incorrect/unanswered questions in specific course
+    - neither: Generate from user's incorrect/unanswered questions across all courses
     """
     service = PracticeQuizService(db)
 
@@ -315,21 +316,24 @@ def generate_practice_quiz(
 
         error_message = f" for selected quizzes {request.quiz_ids}"
     elif request.lecture_ids:
-        # Generate from specific lectures
-        questions = service.get_questions_from_lectures(
+        # Generate from user's incorrect/unanswered questions in specific lectures
+        questions = service.get_incorrect_questions(
+            user_id=current_user.id,
+            course_id=request.course_id,
             lecture_ids=request.lecture_ids,
             question_count=request.question_count,
+            include_unanswered=request.include_unanswered,
         )
 
         if not questions:
             raise HTTPException(
                 status_code=404,
-                detail=f"No quiz questions found in the selected lectures: {request.lecture_ids}",
+                detail=f"No incorrect or unanswered questions found in the selected lectures: {request.lecture_ids}",
             )
 
         error_message = f" for selected lectures {request.lecture_ids}"
-    else:
-        # Generate from incorrect/unanswered questions (original behavior)
+    elif request.course_id:
+        # Generate from user's incorrect/unanswered questions in specific course
         questions = service.get_incorrect_questions(
             user_id=current_user.id,
             course_id=request.course_id,
@@ -340,11 +344,25 @@ def generate_practice_quiz(
         if not questions:
             raise HTTPException(
                 status_code=404,
-                detail="No incorrect or unanswered questions found"
-                + (f" for course {request.course_id}" if request.course_id else ""),
+                detail=f"No incorrect or unanswered questions found for course {request.course_id}",
             )
 
-        error_message = f" for course {request.course_id}" if request.course_id else ""
+        error_message = f" for course {request.course_id}"
+    else:
+        # Generate from user's incorrect/unanswered questions across all courses
+        questions = service.get_incorrect_questions(
+            user_id=current_user.id,
+            question_count=request.question_count,
+            include_unanswered=request.include_unanswered,
+        )
+
+        if not questions:
+            raise HTTPException(
+                status_code=404,
+                detail="No incorrect or unanswered questions found",
+            )
+
+        error_message = ""
 
     # Create practice quiz (user-specific, not in course content)
     practice_quiz = service.create_practice_content(

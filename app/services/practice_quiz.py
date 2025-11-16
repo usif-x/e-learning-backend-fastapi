@@ -17,12 +17,14 @@ class PracticeQuizService:
         self,
         user_id: int,
         course_id: Optional[int] = None,
+        lecture_ids: Optional[List[int]] = None,
         question_count: int = 10,
         include_unanswered: bool = True,
     ) -> List[dict]:
         """
         Get incorrect and/or unanswered questions from user's past attempts.
         Returns questions with their original quiz context.
+        Can filter by course_id and/or lecture_ids.
         """
         # Query all completed attempts
         query = self.db.query(QuizAttempt).filter(
@@ -34,6 +36,9 @@ class PracticeQuizService:
 
         if course_id:
             query = query.filter(QuizAttempt.course_id == course_id)
+
+        if lecture_ids:
+            query = query.filter(QuizAttempt.lecture_id.in_(lecture_ids))
 
         attempts = query.all()
 
@@ -99,6 +104,8 @@ class PracticeQuizService:
 
             if len(incorrect_questions) >= question_count:
                 break
+
+        return incorrect_questions
 
     def get_questions_from_lectures(
         self,
