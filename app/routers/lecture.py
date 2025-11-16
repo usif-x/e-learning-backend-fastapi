@@ -1,6 +1,6 @@
 # app/routers/lecture.py
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -696,6 +696,11 @@ async def generate_quiz_questions(
 
     Returns AI-generated questions for review and editing before saving.
     Frontend can modify/delete questions and then submit to create content endpoint.
+    Supports mixed question types (MCQ and True/False).
+
+    Optional parameters:
+    - notes: Custom instructions (e.g., "Focus on practical applications", "Avoid topic X")
+    - previous_questions: List of previously generated question texts to avoid duplicates
     """
     if not ai_service.is_configured():
         raise HTTPException(
@@ -713,12 +718,14 @@ async def generate_quiz_questions(
         )
 
     try:
-        # Generate questions using AI
+        # Generate questions using AI with mixed types (MCQ + True/False)
         result = await ai_service.generate_questions(
             topic=request.topic,
             difficulty=request.difficulty,
             count=request.count,
-            question_type="multiple_choice",
+            question_type="mixed",
+            notes=request.notes,
+            previous_questions=request.previous_questions,
         )
 
         # Parse questions from AI response
@@ -752,6 +759,12 @@ async def generate_quiz_from_pdf(
     file: UploadFile = File(..., description="PDF file to generate questions from"),
     difficulty: str = Query("medium", pattern="^(easy|medium|hard)$"),
     count: int = Query(5, ge=1, le=20),
+    notes: Optional[str] = Query(
+        None, description="Custom instructions for question generation"
+    ),
+    previous_questions: Optional[List[str]] = Query(
+        None, description="Previously generated questions to avoid"
+    ),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin),
 ):
@@ -761,6 +774,11 @@ async def generate_quiz_from_pdf(
 
     Upload a PDF and AI will extract content and generate relevant questions.
     Returns questions for review and editing before saving.
+    Supports mixed question types (MCQ and True/False).
+
+    Optional parameters:
+    - notes: Custom instructions (e.g., "Focus on practical applications", "Avoid topic X")
+    - previous_questions: List of previously generated question texts to avoid duplicates
     """
     if not ai_service.is_configured():
         raise HTTPException(
@@ -785,12 +803,14 @@ async def generate_quiz_from_pdf(
         )
 
     try:
-        # Generate questions from PDF using AI
+        # Generate questions from PDF using AI with mixed types (MCQ + True/False)
         result = await ai_service.generate_questions_from_pdf(
             file=file,
             difficulty=difficulty,
             count=count,
-            question_type="multiple_choice",
+            question_type="mixed",
+            notes=notes,
+            previous_questions=previous_questions,
         )
 
         # Parse questions from AI response

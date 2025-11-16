@@ -202,7 +202,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 logs/
-migrations/
 
 # Storage (uploaded files)
 storage/

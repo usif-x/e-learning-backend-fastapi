@@ -3,9 +3,9 @@
 AI-powered educational content generation endpoints
 """
 
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 
 from app.core.dependencies import get_current_admin, get_current_user
 from app.models.admin import Admin
@@ -21,6 +21,8 @@ async def generate_questions(
     difficulty: str = Form("medium"),
     count: int = Form(5),
     question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -30,7 +32,9 @@ async def generate_questions(
         topic: The subject/topic for questions
         difficulty: Question difficulty (easy, medium, hard)
         count: Number of questions to generate (1-10)
-        question_type: Type (multiple_choice, essay, short_answer, true_false)
+        question_type: Type (multiple_choice, true_false, essay, mixed)
+        notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
+        previous_questions: Optional list of previously generated question texts to avoid duplicates
         current_user: Authenticated user
 
     Returns:
@@ -44,10 +48,10 @@ async def generate_questions(
             status_code=400, detail="Difficulty must be easy, medium, or hard"
         )
 
-    if question_type not in ["multiple_choice", "essay", "short_answer", "true_false"]:
+    if question_type not in ["multiple_choice", "true_false", "essay", "mixed"]:
         raise HTTPException(
             status_code=400,
-            detail="Invalid question type. Choose: multiple_choice, essay, short_answer, true_false",
+            detail="Invalid question type. Choose: multiple_choice, true_false, essay, mixed",
         )
 
     questions = await ai_service.generate_questions(
@@ -55,6 +59,8 @@ async def generate_questions(
         difficulty=difficulty,
         count=count,
         question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
     )
 
     return {"success": True, "topic": topic, "questions": questions}
@@ -66,6 +72,8 @@ async def generate_questions_from_pdf(
     difficulty: str = Form("medium"),
     count: int = Form(5),
     question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -75,7 +83,9 @@ async def generate_questions_from_pdf(
         file: PDF file to extract content from
         difficulty: Question difficulty (easy, medium, hard)
         count: Number of questions to generate (1-10)
-        question_type: Type (multiple_choice, essay, short_answer)
+        question_type: Type (multiple_choice, true_false, essay, mixed)
+        notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
+        previous_questions: Optional list of previously generated question texts to avoid duplicates
         current_user: Authenticated user
 
     Returns:
@@ -89,10 +99,10 @@ async def generate_questions_from_pdf(
             status_code=400, detail="Difficulty must be easy, medium, or hard"
         )
 
-    if question_type not in ["multiple_choice", "essay", "short_answer"]:
+    if question_type not in ["multiple_choice", "true_false", "essay", "mixed"]:
         raise HTTPException(
             status_code=400,
-            detail="Invalid question type. Choose: multiple_choice, essay, short_answer",
+            detail="Invalid question type. Choose: multiple_choice, true_false, essay, mixed",
         )
 
     questions = await ai_service.generate_questions_from_pdf(
@@ -100,6 +110,8 @@ async def generate_questions_from_pdf(
         difficulty=difficulty,
         count=count,
         question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
     )
 
     return {
@@ -215,6 +227,8 @@ async def admin_generate_questions(
     difficulty: str = Form("medium"),
     count: int = Form(5),
     question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
     current_admin: Admin = Depends(get_current_admin),
 ):
     """
@@ -225,6 +239,8 @@ async def admin_generate_questions(
         difficulty: Question difficulty (easy, medium, hard)
         count: Number of questions to generate (1-20 for admins)
         question_type: Type of questions
+        notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
+        previous_questions: Optional list of previously generated question texts to avoid duplicates
         current_admin: Authenticated admin
 
     Returns:
@@ -238,11 +254,69 @@ async def admin_generate_questions(
         difficulty=difficulty,
         count=count,
         question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
     )
 
     return {
         "success": True,
         "topic": topic,
+        "questions": questions,
+        "admin_id": current_admin.id,
+    }
+
+
+@router.post("/admin/pdf-generate-questions")
+async def admin_generate_questions_from_pdf(
+    file: UploadFile = File(...),
+    difficulty: str = Form("medium"),
+    count: int = Form(5),
+    question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """
+    Admin endpoint to generate questions from PDF
+
+    Args:
+        file: PDF file to extract content from
+        difficulty: Question difficulty (easy, medium, hard)
+        count: Number of questions to generate (1-20 for admins)
+        question_type: Type (multiple_choice, true_false, essay, mixed)
+        notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
+        previous_questions: Optional list of previously generated question texts to avoid duplicates
+        current_admin: Authenticated admin
+
+    Returns:
+        Generated questions based on PDF content with bilingual explanations
+    """
+    if count < 1 or count > 20:
+        raise HTTPException(status_code=400, detail="Count must be between 1 and 20")
+
+    if difficulty not in ["easy", "medium", "hard"]:
+        raise HTTPException(
+            status_code=400, detail="Difficulty must be easy, medium, or hard"
+        )
+
+    if question_type not in ["multiple_choice", "true_false", "essay", "mixed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid question type. Choose: multiple_choice, true_false, essay, mixed",
+        )
+
+    questions = await ai_service.generate_questions_from_pdf(
+        file=file,
+        difficulty=difficulty,
+        count=count,
+        question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
         "questions": questions,
         "admin_id": current_admin.id,
     }

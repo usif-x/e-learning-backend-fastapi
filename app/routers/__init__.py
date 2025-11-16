@@ -6,6 +6,7 @@ from .community import router as community_router
 from .course import router as course_router
 from .lecture import router as lecture_router
 from .user import router as user_router
+from .user_generated_question import router as user_generated_question_router
 
 routes = [
     admin_router,
@@ -16,4 +17,5 @@ routes = [
     lecture_router,
     community_router,
     ai_router,
+    user_generated_question_router,
 ]

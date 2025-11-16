@@ -1,4 +1,5 @@
 # app/routers/course.py
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -76,6 +77,7 @@ def get_course(
     """
     Get a course by ID.
     Available to all users (authenticated or not).
+    If course is free and user is authenticated, auto-enrolls the user.
     """
     service = CourseService(db)
     course = service.get_course(course_id)
@@ -85,6 +87,48 @@ def get_course(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Course not found",
         )
+
+    # Auto-enroll in free courses if user is authenticated
+    if current_user and course.is_free:
+        from sqlalchemy import and_, func
+
+        from app.models.course_enrollment import CourseEnrollment
+        from app.models.lecture import Lecture
+
+        # Check if already enrolled
+        existing_enrollment = (
+            db.query(CourseEnrollment)
+            .filter(
+                and_(
+                    CourseEnrollment.user_id == current_user.id,
+                    CourseEnrollment.course_id == course_id,
+                )
+            )
+            .first()
+        )
+
+        # Auto-enroll if not already enrolled
+        if not existing_enrollment:
+            # Get total lectures count
+            total_lectures = (
+                db.query(func.count(Lecture.id))
+                .filter(Lecture.course_id == course.id)
+                .scalar()
+                or 0
+            )
+
+            # Create free enrollment
+            new_enrollment = CourseEnrollment(
+                user_id=current_user.id,
+                course_id=course.id,
+                enrollment_type="free",
+                price_paid=None,
+                completed_lectures=0,
+                total_lectures=total_lectures,
+                enrolled_at=datetime.utcnow(),
+            )
+            db.add(new_enrollment)
+            db.commit()
 
     return course
 

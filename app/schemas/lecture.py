@@ -275,6 +275,14 @@ class GenerateQuizRequest(BaseModel):
     count: int = Field(
         default=5, ge=1, le=20, description="Number of questions to generate"
     )
+    notes: Optional[str] = Field(
+        None,
+        description="Optional custom instructions (e.g., 'Focus on practical applications', 'Avoid topic X')",
+    )
+    previous_questions: Optional[List[str]] = Field(
+        None,
+        description="Optional list of previously generated question texts to avoid duplicates",
+    )
 
 
 class GenerateQuizResponse(BaseModel):
@@ -321,3 +329,92 @@ class UserAllQuizzesAnalytics(BaseModel):
     page: int
     size: int
     total_pages: int
+
+
+# ==================== Practice Quiz Schemas ====================
+
+
+class PracticeQuizRequest(BaseModel):
+    """Request to generate practice quiz from incorrect answers"""
+
+    course_id: Optional[int] = Field(
+        None, description="Filter by specific course (optional)"
+    )
+    question_count: int = Field(
+        default=10, ge=1, le=50, description="Number of questions to include"
+    )
+    include_unanswered: bool = Field(
+        default=True, description="Include unanswered questions"
+    )
+
+
+class PracticeQuizResponse(BaseModel):
+    """Response containing practice quiz with incorrect/unanswered questions"""
+
+    practice_content_id: int
+    questions: List[QuizQuestionForAttempt]
+    total_questions: int
+    source_info: str
+    quiz_duration: Optional[int] = None
+
+
+class PracticeQuizResultResponse(BaseModel):
+    """Response for a single practice quiz result"""
+
+    id: int
+    course_id: Optional[int]
+    title: str
+    description: Optional[str]
+    total_questions: int
+    score: Optional[float]
+    correct_answers: Optional[int]
+    time_taken: Optional[int]
+    is_completed: int
+    completed_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PracticeQuizResultsListResponse(BaseModel):
+    """Response containing list of practice quiz results with pagination"""
+
+    results: List[PracticeQuizResultResponse]
+    total: int
+    page: int
+    size: int
+    total_pages: int
+
+
+class PracticeQuizQuestionResult(BaseModel):
+    """Single question result with user's answer and explanation"""
+
+    question: str
+    options: List[str]
+    user_answer: Optional[int]
+    correct_answer: int
+    is_correct: bool
+    explanation_en: Optional[str]
+    explanation_ar: Optional[str]
+    source_course_id: Optional[int]
+    source_lecture_id: Optional[int]
+    source_quiz_title: Optional[str]
+
+
+class PracticeQuizDetailedResultResponse(BaseModel):
+    """Detailed response for a practice quiz with questions and results"""
+
+    id: int
+    course_id: Optional[int]
+    title: str
+    description: Optional[str]
+    total_questions: int
+    score: Optional[float]
+    correct_answers: Optional[int]
+    time_taken: Optional[int]
+    is_completed: int
+    completed_at: Optional[datetime]
+    created_at: datetime
+    questions_with_results: Optional[List[PracticeQuizQuestionResult]]
+
+    model_config = ConfigDict(from_attributes=True)

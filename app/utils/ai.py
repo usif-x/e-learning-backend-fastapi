@@ -26,7 +26,7 @@ class AIService:
         self.api_key = settings.ai_api_key
         self.api_endpoint = settings.ai_api_endpoint
         self.model = settings.ai_model
-        self.timeout = 60.0  # 60 seconds timeout
+        self.timeout = 900.0  # 900 seconds timeout
 
         # Validate configuration
         if not self.api_key:
@@ -71,7 +71,19 @@ class AIService:
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON from AI response: {str(e)}")
-            logger.error(f"Raw response: {text[:500]}...")
+            logger.error(f"Response length: {len(text)} characters")
+            logger.error(f"Full response: {text}")
+
+            # Check if response seems truncated
+            if not text.strip().endswith("}") and not text.strip().endswith("]"):
+                logger.error(
+                    "Response appears to be truncated - missing closing bracket"
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="AI response was incomplete. Please try again with fewer questions or increase timeout.",
+                )
+
             raise HTTPException(
                 status_code=500, detail=f"Failed to parse AI response as JSON: {str(e)}"
             )
@@ -215,6 +227,8 @@ class AIService:
         difficulty: str = "medium",
         count: int = 5,
         question_type: str = "multiple_choice",
+        notes: Optional[str] = None,
+        previous_questions: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Generate educational questions for a topic
@@ -223,16 +237,134 @@ class AIService:
             topic: The subject/topic for questions
             difficulty: Question difficulty (easy, medium, hard)
             count: Number of questions to generate
-            question_type: Type of questions (multiple_choice, true_false, short_answer)
+            question_type: Type of questions (multiple_choice, true_false, essay, mixed)
+            notes: Optional instructions for question generation (e.g., "Focus on practical applications", "Avoid theoretical concepts", "Include examples from real life")
+            previous_questions: Optional list of previously generated question texts to avoid duplicates
 
         Returns:
             Dictionary with parsed questions
         """
         system_message = """You are an expert educational content creator. 
-Generate clear, accurate, and pedagogically sound questions for students.
+Generate UNIQUE and DIVERSE questions for students. Each request should produce DIFFERENT questions.
+Generate clear, accurate, and pedagogically sound questions.
 Return ONLY valid JSON without any markdown formatting."""
 
-        prompt = f"""Generate {count} {difficulty} difficulty {question_type} questions about: {topic}
+        # Add notes/instructions if provided
+        notes_instruction = ""
+        if notes:
+            notes_instruction = f"\n\nIMPORTANT ADDITIONAL INSTRUCTIONS:\n{notes}\n"
+
+        # Add previous questions context if provided
+        previous_context = ""
+        if previous_questions and len(previous_questions) > 0:
+            previous_list = "\n".join(
+                [f"- {q}" for q in previous_questions[:20]]
+            )  # Limit to last 20 to avoid token overflow
+            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT THESE):
+{previous_list}
+
+You MUST generate COMPLETELY DIFFERENT questions. Use different angles, examples, concepts, and perspectives.\n"""
+
+        if question_type == "mixed":
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty mixed questions (both multiple choice and true/false) about: {topic}
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+
+Mix the question types intelligently based on the topic. Guidelines:
+- Multiple choice questions (4 options) should generally be MORE prevalent (approximately 60-70% of questions)
+- True/False questions (2 options: True, False) should complement the MCQs (approximately 30-40%)
+- Adjust the ratio based on what works best for the topic - some topics work better with more MCQs, others may benefit from more True/False
+- Ensure a good balance that tests different aspects of understanding
+
+Format the output as JSON with the following structure:
+{{
+    "questions": [
+        {{
+            "question": "Question text here",
+            "options": ["Option A", "Option B", "Option C", "Option D"],  // 4 options for MCQ
+            "correct_answer": 0,  // index of correct option
+            "explanation_en": "Why this is correct (in English)",
+            "explanation_ar": "لماذا هذا صحيح (in Arabic - Egyptian dialect)"
+        }},
+        {{
+            "question": "True/False question text here",
+            "options": ["True", "False"],  // 2 options for True/False
+            "correct_answer": 0,  // 0 for True, 1 for False
+            "explanation_en": "Explanation why this is true/false (in English)",
+            "explanation_ar": "شرح لماذا هذا صحيح/خطأ (in Arabic - Egyptian dialect)"
+        }}
+    ]
+}}
+
+Make sure questions are:
+- Clear and unambiguous
+- Appropriate for the difficulty level
+- Educational and test understanding
+- Well-mixed between MCQ (4 options) and True/False (2 options)
+- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
+- Arabic explanations should use clear Egyptian Arabic dialect
+
+Return ONLY the JSON object, no markdown formatting."""
+        elif question_type == "true_false":
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty True/False questions about: {topic}
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+
+Format the output as JSON with the following structure:
+{{
+    "questions": [
+        {{
+            "question": "True/False question text here",
+            "options": ["True", "False"],  // Always 2 options
+            "correct_answer": 0,  // 0 for True, 1 for False
+            "explanation_en": "Explanation why this is true/false (in English)",
+            "explanation_ar": "شرح لماذا هذا صحيح/خطأ (in Arabic - Egyptian dialect)"
+        }}
+    ]
+}}
+
+Make sure questions are:
+- Clear and unambiguous statements that are either true or false
+- Appropriate for the difficulty level
+- Educational and test understanding of key concepts
+- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
+- Arabic explanations should use clear Egyptian Arabic dialect
+
+Return ONLY the JSON object, no markdown formatting."""
+        elif question_type == "essay":
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty essay/short answer questions about: {topic}
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+
+Mix different types of open-ended questions:
+- Full essay questions requiring detailed explanations (2-3 paragraphs)
+- Short answer questions requiring brief descriptions (1-2 sentences)
+- Definition questions asking to define or name concepts
+- Explanation questions asking to describe processes or mechanisms
+
+Format the output as JSON with the following structure:
+{{
+    "questions": [
+        {{
+            "question": "Essay or short answer question text here",
+            "key_points": ["Point 1", "Point 2", "Point 3"],
+            "suggested_length": "2-3 paragraphs" or "1-2 sentences" or "One word/phrase",
+            "grading_criteria": "What to look for in answers"
+        }}
+    ]
+}}
+
+Make sure questions:
+- Vary between full essays, short answers, and brief definitions
+- Require critical thinking appropriate to the difficulty level
+- Are open-ended and encourage detailed or concise responses based on question type
+- Include clear grading guidance
+
+Return ONLY the JSON object, no markdown formatting."""
+        else:
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty {question_type} questions about: {topic}
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
 
 Format the output as JSON with the following structure:
 {{
@@ -259,8 +391,8 @@ Return ONLY the JSON object, no markdown formatting."""
         response_text = await self.generate_completion(
             prompt=prompt,
             system_message=system_message,
-            temperature=0.7,
-            max_tokens=2000,
+            temperature=0.9,  # Increased for more diverse/unique questions
+            max_tokens=4000,  # Increased to prevent truncation with bilingual explanations
         )
 
         # Parse JSON from response
@@ -377,6 +509,8 @@ Return ONLY the JSON object, no markdown formatting."""
         difficulty: str = "medium",
         count: int = 5,
         question_type: str = "multiple_choice",
+        notes: Optional[str] = None,
+        previous_questions: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Extract content from PDF and generate questions
@@ -385,7 +519,9 @@ Return ONLY the JSON object, no markdown formatting."""
             file: Uploaded PDF file
             difficulty: Question difficulty (easy, medium, hard)
             count: Number of questions to generate
-            question_type: Type of questions (multiple_choice, essay, short_answer)
+            question_type: Type of questions (multiple_choice, true_false, essay, mixed)
+            notes: Optional instructions for question generation (e.g., "Focus on practical applications", "Avoid theoretical concepts", "Include examples from real life")
+            previous_questions: Optional list of previously generated question texts to avoid duplicates
 
         Returns:
             Dictionary with parsed questions
@@ -407,11 +543,106 @@ Return ONLY the JSON object, no markdown formatting."""
 
         # Generate questions based on content
         system_message = """You are an expert educational content creator. 
-Generate clear, accurate, and pedagogically sound questions based on the provided content.
+Generate UNIQUE and DIVERSE questions based on the provided content. Each request should produce DIFFERENT questions.
+Generate clear, accurate, and pedagogically sound questions.
 Return ONLY valid JSON without any markdown formatting."""
 
+        # Add notes/instructions if provided
+        notes_instruction = ""
+        if notes:
+            notes_instruction = f"\n\nIMPORTANT ADDITIONAL INSTRUCTIONS:\n{notes}\n"
+
+        # Add previous questions context if provided
+        previous_context = ""
+        if previous_questions and len(previous_questions) > 0:
+            previous_list = "\n".join(
+                [f"- {q}" for q in previous_questions[:20]]
+            )  # Limit to last 20 to avoid token overflow
+            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT THESE):
+{previous_list}
+
+You MUST generate COMPLETELY DIFFERENT questions. Use different angles, examples, concepts, and perspectives.\n"""
+
         if question_type == "essay":
-            prompt = f"""Based on the following content, generate {count} {difficulty} difficulty essay questions.
+            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty essay/short answer questions.
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Mix different types of open-ended questions:
+- Full essay questions requiring detailed explanations (2-3 paragraphs)
+- Short answer questions requiring brief descriptions (1-2 sentences)
+- Definition questions asking to define or name concepts
+- Explanation questions asking to describe processes or mechanisms
+
+Format the output as JSON:
+{{
+    "questions": [
+        {{
+            "question": "Essay or short answer question text here",
+            "key_points": ["Point 1", "Point 2", "Point 3"],
+            "suggested_length": "2-3 paragraphs" or "1-2 sentences" or "One word/phrase",
+            "grading_criteria": "What to look for in answers"
+        }}
+    ]
+}}
+
+Make sure questions:
+- Vary between full essays, short answers, and brief definitions
+- Are based on the content provided
+- Require critical thinking appropriate to the difficulty level
+- Include clear grading guidance
+
+Return ONLY the JSON object, no markdown formatting."""
+        elif question_type == "mixed":
+            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty mixed questions (both multiple choice and true/false).
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Mix the question types intelligently based on the content. Guidelines:
+- Multiple choice questions (4 options) should generally be MORE prevalent (approximately 60-70% of questions)
+- True/False questions (2 options: True, False) should complement the MCQs (approximately 30-40%)
+- Adjust the ratio based on what works best for the content - some topics work better with more MCQs, others may benefit from more True/False
+- Ensure a good balance that tests different aspects of understanding from the provided content
+
+Format the output as JSON:
+{{
+    "questions": [
+        {{
+            "question": "Question text here",
+            "options": ["Option A", "Option B", "Option C", "Option D"],  // 4 options for MCQ
+            "correct_answer": 0,  // index of correct option
+            "explanation_en": "Why this is correct and references to content (in English)",
+            "explanation_ar": "لماذا هذا صحيح ومراجع للمحتوى (in Arabic - Egyptian dialect)"
+        }},
+        {{
+            "question": "True/False question text here",
+            "options": ["True", "False"],  // 2 options for True/False
+            "correct_answer": 0,  // 0 for True, 1 for False
+            "explanation_en": "Explanation why this is true/false and references to content (in English)",
+            "explanation_ar": "شرح لماذا هذا صحيح/خطأ ومراجع للمحتوى (in Arabic - Egyptian dialect)"
+        }}
+    ]
+}}
+
+Make sure questions:
+- Are directly based on the content
+- Test understanding of key concepts
+- Are appropriate for the difficulty level
+- Well-mixed between MCQ (4 options) and True/False (2 options)
+- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
+- Arabic explanations should use clear Egyptian Arabic dialect
+
+Return ONLY the JSON object, no markdown formatting."""
+        elif question_type == "true_false":
+            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty True/False questions.
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
@@ -420,23 +651,28 @@ Format the output as JSON:
 {{
     "questions": [
         {{
-            "question": "Essay question text here",
-            "key_points": ["Point 1", "Point 2", "Point 3"],
-            "suggested_length": "1-2 paragraphs",
-            "grading_criteria": "What to look for in answers"
+            "question": "True/False question text here based on the content",
+            "options": ["True", "False"],  // Always 2 options
+            "correct_answer": 0,  // 0 for True, 1 for False
+            "explanation_en": "Explanation why this is true/false and references to content (in English)",
+            "explanation_ar": "شرح لماذا هذا صحيح/خطأ ومراجع للمحتوى (in Arabic - Egyptian dialect)"
         }}
     ]
 }}
 
 Make sure questions:
-- Require critical thinking and analysis
-- Are based on the content provided
+- Are directly based on the content provided
+- Are clear statements that are either true or false
+- Test understanding of key concepts from the content
 - Are appropriate for the difficulty level
-- Include clear grading guidance
+- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
+- Arabic explanations should use clear Egyptian Arabic dialect
 
 Return ONLY the JSON object, no markdown formatting."""
         else:
-            prompt = f"""Based on the following content, generate {count} {difficulty} difficulty {question_type} questions.
+            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty {question_type} questions.
+
+Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
@@ -466,8 +702,8 @@ Return ONLY the JSON object, no markdown formatting."""
         response_text = await self.generate_completion(
             prompt=prompt,
             system_message=system_message,
-            temperature=0.7,
-            max_tokens=2500,
+            temperature=0.9,  # Increased for more diverse/unique questions
+            max_tokens=5000,  # Increased to prevent truncation with bilingual explanations
         )
 
         # Parse JSON from response
