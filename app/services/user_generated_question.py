@@ -92,6 +92,13 @@ class UserGeneratedQuestionService:
                 detail="File must be a PDF",
             )
 
+        # Save PDF file to server with UUID naming
+        from app.utils.file_upload import file_upload_service
+
+        uuid_filename, relative_path = await file_upload_service.save_file(
+            file=file, folder="user_questions", allowed_extensions=[".pdf"]
+        )
+
         # Generate questions using AI
         result = await ai_service.generate_questions_from_pdf(
             file=file,
@@ -125,7 +132,7 @@ class UserGeneratedQuestionService:
             questions=questions,
             total_questions=len(questions),
             source_type="pdf",
-            source_file_name=file.filename,
+            source_file_name=uuid_filename,  # Store UUID filename
         )
 
         self.db.add(question_set)
@@ -174,16 +181,79 @@ class UserGeneratedQuestionService:
                 previous_questions=previous_questions,
             )
         else:
-            # For PDF-based, we can't regenerate without the PDF
-            # So we just use the topic
-            result = await ai_service.generate_questions(
-                topic=question_set.topic,
-                difficulty=question_set.difficulty,
-                count=count,
-                question_type=question_set.question_type,
-                notes=notes or "Generate questions based on the same context",
-                previous_questions=previous_questions,
-            )
+            # For PDF-based, check if we have the saved PDF file
+            if question_set.source_file_name:
+                # Read the saved PDF file
+                from app.utils.file_upload import file_upload_service
+
+                pdf_path = file_upload_service.get_absolute_path(
+                    f"user_questions/{question_set.source_file_name}"
+                )
+
+                if pdf_path and pdf_path.exists():
+                    # Read PDF content
+                    with open(pdf_path, "rb") as f:
+                        pdf_content = f.read()
+
+                    # Create a file-like object with filename attribute
+                    from io import BytesIO
+
+                    class PDFFileWrapper:
+                        def __init__(self, content, filename):
+                            self._content = BytesIO(content)
+                            self.filename = filename
+
+                        async def read(self, size=-1):
+                            # Since BytesIO operations are synchronous, we need to run them in a thread
+                            import asyncio
+
+                            loop = asyncio.get_event_loop()
+                            return await loop.run_in_executor(
+                                None, self._content.read, size
+                            )
+
+                        def seek(self, pos, whence=0):
+                            return self._content.seek(pos, whence)
+
+                        def tell(self):
+                            return self._content.tell()
+
+                        def close(self):
+                            return self._content.close()
+
+                    pdf_file_like = PDFFileWrapper(
+                        pdf_content, question_set.source_file_name
+                    )
+
+                    # Generate questions from the actual PDF content
+                    result = await ai_service.generate_questions_from_pdf(
+                        file=pdf_file_like,
+                        difficulty=question_set.difficulty,
+                        count=count,
+                        question_type=question_set.question_type,
+                        notes=notes,
+                        previous_questions=previous_questions,
+                    )
+                else:
+                    # PDF file not found, fall back to topic-based generation
+                    result = await ai_service.generate_questions(
+                        topic=question_set.topic,
+                        difficulty=question_set.difficulty,
+                        count=count,
+                        question_type=question_set.question_type,
+                        notes=notes or "Generate questions based on the same context",
+                        previous_questions=previous_questions,
+                    )
+            else:
+                # No saved PDF file, fall back to topic-based generation
+                result = await ai_service.generate_questions(
+                    topic=question_set.topic,
+                    difficulty=question_set.difficulty,
+                    count=count,
+                    question_type=question_set.question_type,
+                    notes=notes or "Generate questions based on the same context",
+                    previous_questions=previous_questions,
+                )
 
         new_questions = result.get("questions", [])
 

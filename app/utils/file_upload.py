@@ -3,7 +3,7 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile
 
@@ -34,6 +34,7 @@ class FileUploadService:
             self.base_storage_path / "categories",
             self.base_storage_path / "users",
             self.base_storage_path / "lectures",
+            self.base_storage_path / "user_questions",
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -222,6 +223,80 @@ class FileUploadService:
 
         # Generate UUID filename
         extension = self._get_file_extension(file.filename)
+        uuid_filename = f"{uuid.uuid4()}{extension}"
+
+        # Construct full path
+        folder_path = self.base_storage_path / folder
+        folder_path.mkdir(parents=True, exist_ok=True)
+        file_path = folder_path / uuid_filename
+
+        # Save file
+        try:
+            with open(file_path, "wb") as f:
+                f.write(contents)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+
+        # Return the UUID filename and relative path for database storage
+        relative_path = f"{folder}/{uuid_filename}"
+        return uuid_filename, relative_path
+
+    async def save_file(
+        self,
+        file: UploadFile,
+        folder: str = "files",
+        allowed_extensions: Optional[List[str]] = None,
+    ) -> tuple[str, str]:
+        """
+        Save an uploaded file with UUID naming.
+
+        Args:
+            file: The uploaded file
+            folder: Subfolder within storage
+            allowed_extensions: List of allowed file extensions (e.g., ['.pdf', '.txt'])
+
+        Returns:
+            Tuple of (uuid_filename, relative_path)
+
+        Raises:
+            HTTPException: If file validation fails or save fails
+        """
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+
+        extension = self._get_file_extension(file.filename)
+
+        # Validate extension if allowed_extensions provided
+        if allowed_extensions and extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}",
+            )
+
+        # Read file content
+        try:
+            contents = await file.read()
+            file_size = len(contents)
+
+            # Basic file size check (50MB limit for general files)
+            max_size = 50 * 1024 * 1024
+            if file_size > max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File size exceeds maximum allowed size of {max_size / (1024*1024)}MB",
+                )
+
+            if file_size == 0:
+                raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise
+            raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+        finally:
+            await file.seek(0)  # Reset file pointer
+
+        # Generate UUID filename
         uuid_filename = f"{uuid.uuid4()}{extension}"
 
         # Construct full path

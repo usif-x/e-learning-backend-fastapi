@@ -501,7 +501,7 @@ Return ONLY the JSON object, no markdown formatting."""
             )
         finally:
             # Reset file pointer for potential reuse
-            await file.seek(0)
+            file.seek(0)
 
     async def generate_questions_from_pdf(
         self,
