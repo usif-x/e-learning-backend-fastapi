@@ -10,6 +10,8 @@ from app.models.user import User
 from app.schemas.user_generated_question import (
     AddMoreQuestionsRequest,
     AttemptResultResponse,
+    DeleteQuestionRequest,
+    EditQuestionRequest,
     GenerateUserQuestionsFromPDFRequest,
     GenerateUserQuestionsRequest,
     ParticipantListResponse,
@@ -159,6 +161,91 @@ async def add_more_questions(
         user_id=current_user.id,
         count=request.count,
         notes=request.notes,
+    )
+
+    return {
+        "id": question_set.id,
+        "user_id": question_set.user_id,
+        "title": question_set.title,
+        "description": question_set.description,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "question_type": question_set.question_type,
+        "is_public": question_set.is_public,
+        "total_questions": question_set.total_questions,
+        "source_type": question_set.source_type,
+        "source_file_name": question_set.source_file_name,
+        "attempt_count": question_set.attempt_count,
+        "created_at": question_set.created_at,
+        "updated_at": question_set.updated_at,
+        "questions": question_set.questions,
+        "creator_name": current_user.display_name,
+    }
+
+
+@router.put(
+    "/{question_set_id}/edit-question",
+    response_model=UserGeneratedQuestionDetailResponse,
+)
+async def edit_question(
+    question_set_id: int,
+    request: EditQuestionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Edit a specific question in a question set.
+    Only the creator can edit questions.
+    """
+    service = UserGeneratedQuestionService(db)
+
+    question_set = service.edit_question(
+        question_set_id=question_set_id,
+        user_id=current_user.id,
+        question_index=request.question_index,
+        question_data=request.question_data.model_dump(),
+    )
+
+    return {
+        "id": question_set.id,
+        "user_id": question_set.user_id,
+        "title": question_set.title,
+        "description": question_set.description,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "question_type": question_set.question_type,
+        "is_public": question_set.is_public,
+        "total_questions": question_set.total_questions,
+        "source_type": question_set.source_type,
+        "source_file_name": question_set.source_file_name,
+        "attempt_count": question_set.attempt_count,
+        "created_at": question_set.created_at,
+        "updated_at": question_set.updated_at,
+        "questions": question_set.questions,
+        "creator_name": current_user.display_name,
+    }
+
+
+@router.delete(
+    "/{question_set_id}/delete-question",
+    response_model=UserGeneratedQuestionDetailResponse,
+)
+async def delete_question(
+    question_set_id: int,
+    request: DeleteQuestionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a specific question from a question set.
+    Only the creator can delete questions. Cannot delete the last question.
+    """
+    service = UserGeneratedQuestionService(db)
+
+    question_set = service.delete_question(
+        question_set_id=question_set_id,
+        user_id=current_user.id,
+        question_index=request.question_index,
     )
 
     return {
@@ -355,7 +442,10 @@ def get_public_question_sets(
                 "topic": r["question_set"].topic,
                 "difficulty": r["question_set"].difficulty,
                 "question_type": r["question_set"].question_type,
+                "is_public": r["question_set"].is_public,
                 "total_questions": r["question_set"].total_questions,
+                "source_type": r["question_set"].source_type,
+                "source_file_name": r["question_set"].source_file_name,
                 "attempt_count": r["question_set"].attempt_count,
                 "created_at": r["question_set"].created_at,
                 "creator_name": r["creator_name"],
@@ -368,6 +458,78 @@ def get_public_question_sets(
             for r in results
         ],
         **pagination,
+    }
+
+
+@router.get("/public/{question_set_id}", response_model=PublicQuestionSetResponse)
+def get_public_question_set_detail(
+    question_set_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get detailed view of a public question set.
+    Shows if you've attempted it and your best score.
+    """
+    service = UserGeneratedQuestionService(db)
+    question_set = service.get_public_question_set_detail(
+        question_set_id=question_set_id,
+    )
+
+    # Check if user has completed attempts
+    from app.models.user_generated_question import UserGeneratedQuestionAttempt
+
+    user_attempts = (
+        db.query(UserGeneratedQuestionAttempt)
+        .filter(
+            UserGeneratedQuestionAttempt.question_set_id == question_set_id,
+            UserGeneratedQuestionAttempt.user_id == current_user.id,
+            UserGeneratedQuestionAttempt.is_completed == True,
+        )
+        .all()
+    )
+
+    user_has_attempted = len(user_attempts) > 0
+    user_best_score = (
+        max([a.score for a in user_attempts if a.score is not None])
+        if user_attempts
+        else None
+    )
+
+    # Check for pending (incomplete) attempt
+    pending_attempt = (
+        db.query(UserGeneratedQuestionAttempt)
+        .filter(
+            UserGeneratedQuestionAttempt.question_set_id == question_set_id,
+            UserGeneratedQuestionAttempt.user_id == current_user.id,
+            UserGeneratedQuestionAttempt.is_completed == False,
+        )
+        .first()
+    )
+
+    return {
+        "id": question_set.id,
+        "title": question_set.title,
+        "description": question_set.description,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "question_type": question_set.question_type,
+        "is_public": question_set.is_public,
+        "total_questions": question_set.total_questions,
+        "source_type": question_set.source_type,
+        "source_file_name": question_set.source_file_name,
+        "attempt_count": question_set.attempt_count,
+        "created_at": question_set.created_at,
+        "creator_name": (
+            question_set.user.display_name if question_set.user else "Unknown"
+        ),
+        "user_has_attempted": user_has_attempted,
+        "user_best_score": user_best_score,
+        "user_has_pending_attempt": pending_attempt is not None,
+        "pending_attempt_id": pending_attempt.id if pending_attempt else None,
+        "pending_attempt_started_at": (
+            pending_attempt.started_at if pending_attempt else None
+        ),
     }
 
 

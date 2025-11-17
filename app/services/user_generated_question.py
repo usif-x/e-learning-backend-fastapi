@@ -278,6 +278,107 @@ class UserGeneratedQuestionService:
 
         return question_set
 
+    def edit_question(
+        self,
+        question_set_id: int,
+        user_id: int,
+        question_index: int,
+        question_data: dict,
+    ) -> UserGeneratedQuestion:
+        """
+        Edit a specific question in a question set
+        """
+        # Get existing question set
+        question_set = (
+            self.db.query(UserGeneratedQuestion)
+            .filter(
+                UserGeneratedQuestion.id == question_set_id,
+                UserGeneratedQuestion.user_id == user_id,
+            )
+            .first()
+        )
+
+        if not question_set:
+            raise HTTPException(
+                status_code=404,
+                detail="Question set not found",
+            )
+
+        # Check if question index is valid
+        if question_index < 0 or question_index >= len(question_set.questions):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Question index {question_index} is out of range. Valid range: 0-{len(question_set.questions)-1}",
+            )
+
+        # Update the question
+        question_set.questions[question_index] = question_data
+
+        # Mark the questions field as modified for SQLAlchemy
+        from sqlalchemy.orm import attributes
+
+        attributes.flag_modified(question_set, "questions")
+
+        self.db.commit()
+        self.db.refresh(question_set)
+
+        return question_set
+
+    def delete_question(
+        self,
+        question_set_id: int,
+        user_id: int,
+        question_index: int,
+    ) -> UserGeneratedQuestion:
+        """
+        Delete a specific question from a question set
+        """
+        # Get existing question set
+        question_set = (
+            self.db.query(UserGeneratedQuestion)
+            .filter(
+                UserGeneratedQuestion.id == question_set_id,
+                UserGeneratedQuestion.user_id == user_id,
+            )
+            .first()
+        )
+
+        if not question_set:
+            raise HTTPException(
+                status_code=404,
+                detail="Question set not found",
+            )
+
+        # Check if question index is valid
+        if question_index < 0 or question_index >= len(question_set.questions):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Question index {question_index} is out of range. Valid range: 0-{len(question_set.questions)-1}",
+            )
+
+        # Check if this would leave the question set empty
+        if len(question_set.questions) <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the last question from a question set",
+            )
+
+        # Delete the question
+        question_set.questions.pop(question_index)
+
+        # Update total questions count
+        question_set.total_questions = len(question_set.questions)
+
+        # Mark the questions field as modified for SQLAlchemy
+        from sqlalchemy.orm import attributes
+
+        attributes.flag_modified(question_set, "questions")
+
+        self.db.commit()
+        self.db.refresh(question_set)
+
+        return question_set
+
     def get_user_question_sets(
         self,
         user_id: int,
@@ -334,6 +435,29 @@ class UserGeneratedQuestionService:
                 detail="Question set not found",
             )
 
+        return question_set
+
+    def get_public_question_set_detail(
+        self,
+        question_set_id: int,
+    ) -> UserGeneratedQuestion:
+        """
+        Get detailed public question set (any user can see)
+        """
+        question_set = (
+            self.db.query(UserGeneratedQuestion)
+            .filter(
+                UserGeneratedQuestion.id == question_set_id,
+                UserGeneratedQuestion.is_public == True,
+            )
+            .first()
+        )
+
+        if not question_set:
+            raise HTTPException(
+                status_code=404,
+                detail="Question set not found",
+            )
         return question_set
 
     def update_question_set(

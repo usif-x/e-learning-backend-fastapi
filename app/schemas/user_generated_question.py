@@ -107,6 +107,28 @@ class UserGeneratedQuestionListResponse(BaseModel):
     total_pages: int
 
 
+# ==================== Question Management Schemas ====================
+
+
+class EditQuestionRequest(BaseModel):
+    """Request to edit a specific question"""
+
+    question_index: int = Field(
+        ..., ge=0, description="Index of the question to edit (0-based)"
+    )
+    question_data: QuestionDetail = Field(
+        ..., description="New question data to replace the existing question"
+    )
+
+
+class DeleteQuestionRequest(BaseModel):
+    """Request to delete a specific question"""
+
+    question_index: int = Field(
+        ..., ge=0, description="Index of the question to delete (0-based)"
+    )
+
+
 # ==================== Attempt Schemas ====================
 
 
@@ -194,7 +216,10 @@ class PublicQuestionSetResponse(BaseModel):
     topic: str
     difficulty: str
     question_type: str
+    is_public: bool
     total_questions: int
+    source_type: str
+    source_file_name: Optional[str]
     attempt_count: int
     created_at: datetime
     creator_name: str
