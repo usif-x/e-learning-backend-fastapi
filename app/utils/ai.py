@@ -238,164 +238,220 @@ class AIService:
             difficulty: Question difficulty (easy, medium, hard)
             count: Number of questions to generate
             question_type: Type of questions (multiple_choice, true_false, essay, mixed)
-            notes: Optional instructions for question generation (e.g., "Focus on practical applications", "Avoid theoretical concepts", "Include examples from real life")
+            notes: Optional instructions for question generation
             previous_questions: Optional list of previously generated question texts to avoid duplicates
 
         Returns:
             Dictionary with parsed questions
         """
-        system_message = """You are an expert educational content creator. 
-Generate UNIQUE and DIVERSE questions for students. Each request should produce DIFFERENT questions.
-Generate clear, accurate, and pedagogically sound questions.
-Return ONLY valid JSON without any markdown formatting."""
+        system_message = """You are an expert educational content creator specializing in cognitive development and assessment design.
+
+CRITICAL REQUIREMENTS - Question Distribution:
+Your questions MUST follow this exact distribution:
+- 70% Standard Questions: Direct assessment of knowledge and understanding
+- 20% Critical Thinking Questions: Require analysis, evaluation, synthesis, or application of concepts
+- 10% Linking Questions: Connect multiple concepts, topics, or ideas from the content
+
+Generate UNIQUE and DIVERSE questions. Each request should produce DIFFERENT questions.
+Return ONLY valid JSON without any markdown formatting.
+
+QUESTION TYPE DEFINITIONS:
+
+1. STANDARD QUESTIONS (70%):
+   - Test recall, comprehension, and basic understanding
+   - Straightforward application of concepts
+   - Examples: "What is...", "Define...", "Which of the following..."
+
+2. CRITICAL THINKING QUESTIONS (20%):
+   - Require higher-order thinking skills (Bloom's Taxonomy: Analyze, Evaluate, Create)
+   - Ask students to compare, contrast, justify, predict, or solve problems
+   - Examples: "Why would X happen if Y changed?", "What would be the consequences of...", "How would you solve..."
+   - Should make students think deeply, not just recall
+
+3. LINKING QUESTIONS (10%):
+   - Connect two or more concepts, topics, or ideas
+   - Show relationships between different parts of the material
+   - Examples: "How does concept X relate to concept Y?", "What is the connection between...", "Compare and contrast..."
+   - Encourage holistic understanding of the subject"""
 
         # Add notes/instructions if provided
         notes_instruction = ""
         if notes:
-            notes_instruction = f"\n\nIMPORTANT ADDITIONAL INSTRUCTIONS:\n{notes}\n"
+            notes_instruction = f"\n\nADDITIONAL INSTRUCTIONS:\n{notes}\n"
 
         # Add previous questions context if provided
         previous_context = ""
         if previous_questions and len(previous_questions) > 0:
-            previous_list = "\n".join(
-                [f"- {q}" for q in previous_questions[:20]]
-            )  # Limit to last 20 to avoid token overflow
-            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT THESE):
+            previous_list = "\n".join([f"- {q}" for q in previous_questions[:20]])
+            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT):
 {previous_list}
 
-You MUST generate COMPLETELY DIFFERENT questions. Use different angles, examples, concepts, and perspectives.\n"""
+Generate COMPLETELY DIFFERENT questions with different angles and perspectives.\n"""
 
         if question_type == "mixed":
-            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty mixed questions (both multiple choice and true/false) about: {topic}
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty mixed questions about: {topic}
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION (strictly follow):
+- 70% Standard questions (basic MCQ and True/False)
+- 20% Critical Thinking questions (analysis, evaluation, problem-solving)
+- 10% Linking questions (connecting multiple concepts)
 
-Mix the question types intelligently based on the topic. Guidelines:
-- Multiple choice questions (4 options) should generally be MORE prevalent (approximately 60-70% of questions)
-- True/False questions (2 options: True, False) should complement the MCQs (approximately 30-40%)
-- Adjust the ratio based on what works best for the topic - some topics work better with more MCQs, others may benefit from more True/False
-- Ensure a good balance that tests different aspects of understanding
+For {count} questions, this means approximately:
+- Standard: {int(count * 0.7)} questions
+- Critical Thinking: {int(count * 0.2)} questions  
+- Linking: {max(1, int(count * 0.1))} questions
 
-Format the output as JSON with the following structure:
+{notes_instruction}{previous_context}
+
+Mix MCQ (4 options) and True/False (2 options) questions intelligently.
+- MCQs should be approximately 60-70% of questions
+- True/False should be approximately 30-40% of questions
+
+Format as JSON:
 {{
     "questions": [
         {{
             "question": "Question text here",
-            "options": ["Option A", "Option B", "Option C", "Option D"],  // 4 options for MCQ
-            "correct_answer": 0,  // index of correct option
-            "explanation_en": "Why this is correct (in English)",
-            "explanation_ar": "لماذا هذا صحيح (in Arabic - Egyptian dialect)"
-        }},
-        {{
-            "question": "True/False question text here",
-            "options": ["True", "False"],  // 2 options for True/False
-            "correct_answer": 0,  // 0 for True, 1 for False
-            "explanation_en": "Explanation why this is true/false (in English)",
-            "explanation_ar": "شرح لماذا هذا صحيح/خطأ (in Arabic - Egyptian dialect)"
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation in English",
+            "explanation_ar": "شرح بالعربية (Egyptian dialect)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create"
         }}
     ]
 }}
 
-Make sure questions are:
-- Clear and unambiguous
-- Appropriate for the difficulty level
-- Educational and test understanding
-- Well-mixed between MCQ (4 options) and True/False (2 options)
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
+ENSURE:
+- Exact distribution: 70% standard, 20% critical thinking, 10% linking
+- Critical thinking questions require deep analysis, not just recall
+- Linking questions explicitly connect 2+ concepts
+- Clear explanations in both English and Egyptian Arabic
+- Appropriate difficulty level throughout
 
 Return ONLY the JSON object, no markdown formatting."""
+
         elif question_type == "true_false":
             prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty True/False questions about: {topic}
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION:
+- 70% Standard questions (straightforward true/false statements)
+- 20% Critical Thinking questions (require analysis or evaluation)
+- 10% Linking questions (connect multiple concepts)
 
-Format the output as JSON with the following structure:
+For {count} questions:
+- Standard: {int(count * 0.7)} questions
+- Critical Thinking: {int(count * 0.2)} questions
+- Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
+
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "True/False question text here",
-            "options": ["True", "False"],  // Always 2 options
-            "correct_answer": 0,  // 0 for True, 1 for False
-            "explanation_en": "Explanation why this is true/false (in English)",
-            "explanation_ar": "شرح لماذا هذا صحيح/خطأ (in Arabic - Egyptian dialect)"
+            "question": "True/False statement here",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation in English",
+            "explanation_ar": "شرح بالعربية (Egyptian dialect)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
         }}
     ]
 }}
 
-Make sure questions are:
-- Clear and unambiguous statements that are either true or false
-- Appropriate for the difficulty level
-- Educational and test understanding of key concepts
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
+Examples:
+- Standard: "The mitochondria is the powerhouse of the cell."
+- Critical Thinking: "If photosynthesis stopped globally, all animal life would eventually cease to exist."
+- Linking: "The process of cellular respiration is essentially the reverse of photosynthesis."
 
 Return ONLY the JSON object, no markdown formatting."""
+
         elif question_type == "essay":
             prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty essay/short answer questions about: {topic}
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION:
+- 70% Standard questions (describe, explain, define)
+- 20% Critical Thinking questions (analyze, evaluate, justify, propose solutions)
+- 10% Linking questions (compare, relate, synthesize multiple concepts)
 
-Mix different types of open-ended questions:
-- Full essay questions requiring detailed explanations (2-3 paragraphs)
-- Short answer questions requiring brief descriptions (1-2 sentences)
-- Definition questions asking to define or name concepts
-- Explanation questions asking to describe processes or mechanisms
+For {count} questions:
+- Standard: {int(count * 0.7)} questions
+- Critical Thinking: {int(count * 0.2)} questions
+- Linking: {max(1, int(count * 0.1))} questions
 
-Format the output as JSON with the following structure:
+{notes_instruction}{previous_context}
+
+Mix question lengths: full essays (2-3 paragraphs), short answers (1-2 sentences), definitions (one phrase).
+
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Essay or short answer question text here",
+            "question": "Essay or short answer question",
             "key_points": ["Point 1", "Point 2", "Point 3"],
-            "suggested_length": "2-3 paragraphs" or "1-2 sentences" or "One word/phrase",
-            "grading_criteria": "What to look for in answers"
+            "suggested_length": "2-3 paragraphs" | "1-2 sentences" | "One word/phrase",
+            "grading_criteria": "What to look for in answers",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create"
         }}
     ]
 }}
 
-Make sure questions:
-- Vary between full essays, short answers, and brief definitions
-- Require critical thinking appropriate to the difficulty level
-- Are open-ended and encourage detailed or concise responses based on question type
-- Include clear grading guidance
+Examples:
+- Standard: "Define photosynthesis and describe its main stages."
+- Critical Thinking: "Evaluate the impact of deforestation on global climate patterns and propose three evidence-based solutions."
+- Linking: "Compare and contrast cellular respiration and fermentation, explaining when organisms use each process."
 
 Return ONLY the JSON object, no markdown formatting."""
-        else:
-            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty {question_type} questions about: {topic}
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+        else:  # multiple_choice
+            prompt = f"""Generate {count} UNIQUE and DIVERSE {difficulty} difficulty multiple choice questions about: {topic}
 
-Format the output as JSON with the following structure:
+MANDATORY DISTRIBUTION:
+- 70% Standard questions (basic knowledge and comprehension)
+- 20% Critical Thinking questions (analysis, evaluation, application)
+- 10% Linking questions (connecting multiple concepts)
+
+For {count} questions:
+- Standard: {int(count * 0.7)} questions
+- Critical Thinking: {int(count * 0.2)} questions
+- Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
+
+Format as JSON:
 {{
     "questions": [
         {{
             "question": "Question text here",
-            "options": ["A", "B", "C", "D"],  // for multiple choice
-            "correct_answer": 0,  // index of correct option
-            "explanation_en": "Why this is correct (in English)",
-            "explanation_ar": "لماذا هذا صحيح (in Arabic - Egyptian dialect)"
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation in English",
+            "explanation_ar": "شرح بالعربية (Egyptian dialect)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create"
         }}
     ]
 }}
 
-Make sure questions are:
-- Clear and unambiguous
-- Appropriate for the difficulty level
-- Educational and test understanding
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
+Examples:
+- Standard: "What is the primary function of the mitochondria?"
+- Critical Thinking: "A scientist observes that a cell's mitochondria are damaged. Which cellular process would be MOST affected?"
+- Linking: "How does the function of chloroplasts in plant cells relate to the function of mitochondria in animal cells?"
+
+ENSURE exact distribution and appropriate cognitive levels.
 
 Return ONLY the JSON object, no markdown formatting."""
 
         response_text = await self.generate_completion(
             prompt=prompt,
             system_message=system_message,
-            temperature=0.9,  # Increased for more diverse/unique questions
-            max_tokens=4000,  # Increased to prevent truncation with bilingual explanations
+            temperature=0.9,
+            max_tokens=4500,
         )
 
-        # Parse JSON from response
         return self._extract_json_from_response(response_text)
 
     async def summarize_content(
@@ -465,11 +521,9 @@ Return ONLY the JSON object, no markdown formatting."""
             HTTPException: If PDF processing fails
         """
         try:
-            # Read the uploaded file
             contents = await file.read()
             pdf_file = BytesIO(contents)
 
-            # Extract text from PDF
             pdf_reader = PdfReader(pdf_file)
             text_content = []
 
@@ -500,7 +554,6 @@ Return ONLY the JSON object, no markdown formatting."""
                 status_code=400, detail=f"Failed to process PDF file: {str(e)}"
             )
         finally:
-            # Reset file pointer for potential reuse
             file.seek(0)
 
     async def generate_questions_from_pdf(
@@ -519,194 +572,193 @@ Return ONLY the JSON object, no markdown formatting."""
             file: Uploaded PDF file
             difficulty: Question difficulty (easy, medium, hard)
             count: Number of questions to generate
-            question_type: Type of questions (multiple_choice, true_false, essay, mixed)
-            notes: Optional instructions for question generation (e.g., "Focus on practical applications", "Avoid theoretical concepts", "Include examples from real life")
-            previous_questions: Optional list of previously generated question texts to avoid duplicates
+            question_type: Type of questions
+            notes: Optional instructions for question generation
+            previous_questions: Optional list of previously generated questions
 
         Returns:
             Dictionary with parsed questions
         """
-        # Validate file type
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="File must be a PDF")
 
-        # Extract text from PDF
         pdf_content = await self.extract_text_from_pdf(file)
 
-        # Limit content length to avoid token limits
-        max_content_length = 4000  # characters
+        max_content_length = 6000
         if len(pdf_content) > max_content_length:
             pdf_content = (
                 pdf_content[:max_content_length]
                 + "\n\n[Content truncated for length...]"
             )
 
-        # Generate questions based on content
-        system_message = """You are an expert educational content creator. 
-Generate UNIQUE and DIVERSE questions based on the provided content. Each request should produce DIFFERENT questions.
-Generate clear, accurate, and pedagogically sound questions.
-Return ONLY valid JSON without any markdown formatting."""
+        system_message = """You are an expert educational content creator specializing in cognitive development and assessment design.
 
-        # Add notes/instructions if provided
+CRITICAL REQUIREMENTS - Question Distribution:
+Your questions MUST follow this exact distribution:
+- 70% Standard Questions: Direct assessment of knowledge from the content
+- 20% Critical Thinking Questions: Require analysis, evaluation, synthesis of content
+- 10% Linking Questions: Connect multiple concepts or sections from the provided content
+
+Generate UNIQUE and DIVERSE questions based on the provided content.
+Return ONLY valid JSON without any markdown formatting.
+
+QUESTION TYPE DEFINITIONS:
+
+1. STANDARD QUESTIONS (70%):
+   - Test recall and comprehension of content
+   - Direct questions about facts, definitions, processes from the material
+
+2. CRITICAL THINKING QUESTIONS (20%):
+   - Apply content to new scenarios
+   - Analyze relationships or cause-effect from the material
+   - Evaluate arguments or solutions presented in the content
+   - Require deeper reasoning beyond memorization
+
+3. LINKING QUESTIONS (10%):
+   - Connect concepts from different sections of the content
+   - Show how ideas relate across the material
+   - Synthesize information from multiple parts of the document"""
+
         notes_instruction = ""
         if notes:
-            notes_instruction = f"\n\nIMPORTANT ADDITIONAL INSTRUCTIONS:\n{notes}\n"
+            notes_instruction = f"\n\nADDITIONAL INSTRUCTIONS:\n{notes}\n"
 
-        # Add previous questions context if provided
         previous_context = ""
         if previous_questions and len(previous_questions) > 0:
-            previous_list = "\n".join(
-                [f"- {q}" for q in previous_questions[:20]]
-            )  # Limit to last 20 to avoid token overflow
-            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT THESE):
+            previous_list = "\n".join([f"- {q}" for q in previous_questions[:20]])
+            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT):
 {previous_list}
 
-You MUST generate COMPLETELY DIFFERENT questions. Use different angles, examples, concepts, and perspectives.\n"""
+Generate COMPLETELY DIFFERENT questions.\n"""
 
         if question_type == "essay":
-            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty essay/short answer questions.
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} difficulty essay/short answer questions.
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions (describe/explain from content)
+- 20% Critical Thinking: {int(count * 0.2)} questions (analyze/evaluate/apply)
+- 10% Linking: {max(1, int(count * 0.1))} questions (connect multiple concepts from content)
+
+{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
 
-Mix different types of open-ended questions:
-- Full essay questions requiring detailed explanations (2-3 paragraphs)
-- Short answer questions requiring brief descriptions (1-2 sentences)
-- Definition questions asking to define or name concepts
-- Explanation questions asking to describe processes or mechanisms
-
-Format the output as JSON:
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Essay or short answer question text here",
-            "key_points": ["Point 1", "Point 2", "Point 3"],
-            "suggested_length": "2-3 paragraphs" or "1-2 sentences" or "One word/phrase",
-            "grading_criteria": "What to look for in answers"
+            "question": "Essay/short answer question based on content",
+            "key_points": ["Point 1 from content", "Point 2", "Point 3"],
+            "suggested_length": "2-3 paragraphs" | "1-2 sentences" | "One word/phrase",
+            "grading_criteria": "What to look for in answers",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "understand" | "apply" | "analyze" | "evaluate" | "create"
         }}
     ]
 }}
 
-Make sure questions:
-- Vary between full essays, short answers, and brief definitions
-- Are based on the content provided
-- Require critical thinking appropriate to the difficulty level
-- Include clear grading guidance
-
 Return ONLY the JSON object, no markdown formatting."""
+
         elif question_type == "mixed":
-            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty mixed questions (both multiple choice and true/false).
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} difficulty mixed questions.
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
 
-Mix the question types intelligently based on the content. Guidelines:
-- Multiple choice questions (4 options) should generally be MORE prevalent (approximately 60-70% of questions)
-- True/False questions (2 options: True, False) should complement the MCQs (approximately 30-40%)
-- Adjust the ratio based on what works best for the content - some topics work better with more MCQs, others may benefit from more True/False
-- Ensure a good balance that tests different aspects of understanding from the provided content
+Mix MCQ (4 options, 60-70%) and True/False (2 options, 30-40%).
 
-Format the output as JSON:
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Question text here",
-            "options": ["Option A", "Option B", "Option C", "Option D"],  // 4 options for MCQ
-            "correct_answer": 0,  // index of correct option
-            "explanation_en": "Why this is correct and references to content (in English)",
-            "explanation_ar": "لماذا هذا صحيح ومراجع للمحتوى (in Arabic - Egyptian dialect)"
-        }},
-        {{
-            "question": "True/False question text here",
-            "options": ["True", "False"],  // 2 options for True/False
-            "correct_answer": 0,  // 0 for True, 1 for False
-            "explanation_en": "Explanation why this is true/false and references to content (in English)",
-            "explanation_ar": "شرح لماذا هذا صحيح/خطأ ومراجع للمحتوى (in Arabic - Egyptian dialect)"
+            "question": "Question based on content",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
         }}
     ]
 }}
 
-Make sure questions:
-- Are directly based on the content
-- Test understanding of key concepts
-- Are appropriate for the difficulty level
-- Well-mixed between MCQ (4 options) and True/False (2 options)
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
-
 Return ONLY the JSON object, no markdown formatting."""
+
         elif question_type == "true_false":
-            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty True/False questions.
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} True/False questions.
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
 
-Format the output as JSON:
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "True/False question text here based on the content",
-            "options": ["True", "False"],  // Always 2 options
-            "correct_answer": 0,  // 0 for True, 1 for False
-            "explanation_en": "Explanation why this is true/false and references to content (in English)",
-            "explanation_ar": "شرح لماذا هذا صحيح/خطأ ومراجع للمحتوى (in Arabic - Egyptian dialect)"
+            "question": "True/False statement from content",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
         }}
     ]
 }}
-
-Make sure questions:
-- Are directly based on the content provided
-- Are clear statements that are either true or false
-- Test understanding of key concepts from the content
-- Are appropriate for the difficulty level
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
 
 Return ONLY the JSON object, no markdown formatting."""
-        else:
-            prompt = f"""Based on the following content, generate {count} UNIQUE and DIVERSE {difficulty} difficulty {question_type} questions.
 
-Ensure questions are DIFFERENT from any previously generated questions. Use various angles, examples, and perspectives.{notes_instruction}{previous_context}
+        else:  # multiple_choice
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} multiple choice questions.
+
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
 
 Content:
 {pdf_content}
 
-Format the output as JSON:
+Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Question text here",
-            "options": ["A", "B", "C", "D"],  // for multiple_choice
-            "correct_answer": 0,  // index of correct option or the answer text
-            "explanation_en": "Why this is correct and references to content (in English)",
-            "explanation_ar": "لماذا هذا صحيح ومراجع للمحتوى (in Arabic - Egyptian dialect)"
+            "question": "Question based on content",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
         }}
     ]
 }}
-
-Make sure questions:
-- Are directly based on the content
-- Test understanding of key concepts
-- Are appropriate for the difficulty level
-- Include explanations in BOTH English (explanation_en) and Arabic/Egyptian (explanation_ar)
-- Arabic explanations should use clear Egyptian Arabic dialect
 
 Return ONLY the JSON object, no markdown formatting."""
 
         response_text = await self.generate_completion(
             prompt=prompt,
             system_message=system_message,
-            temperature=0.9,  # Increased for more diverse/unique questions
-            max_tokens=5000,  # Increased to prevent truncation with bilingual explanations
+            temperature=0.9,
+            max_tokens=5500,
         )
 
-        # Parse JSON from response
         return self._extract_json_from_response(response_text)
 
 

@@ -26,7 +26,14 @@ from app.schemas.lecture import (
     UserAllQuizzesAnalytics,
     UserQuizAnalytics,
 )
-from app.schemas.user import UpdatePasswordRequest, UserProfileResponse, UserResponse
+from app.schemas.user import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    UpdatePasswordRequest,
+    UserProfileResponse,
+    UserResponse,
+    VerifyResetCodeRequest,
+)
 from app.services.course_enrollment import CourseEnrollmentService
 from app.services.practice_quiz import PracticeQuizService
 from app.services.user import UserService
@@ -820,3 +827,77 @@ def unenroll_from_course(
     service = CourseEnrollmentService(db)
     service.unenroll_user(current_user.id, course_id)
     return None
+
+
+# ==================== Password Management Endpoints ====================
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Initiate password reset by sending verification code to user's Telegram.
+    """
+    service = UserService(db)
+    success = await service.initiate_password_reset(request.phone_number)
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to send verification code. Please check your phone number and try again.",
+        )
+
+    return {"message": "Verification code sent to your Telegram account"}
+
+
+@router.post("/verify-reset-code", status_code=200)
+def verify_reset_code(
+    request: VerifyResetCodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Verify the password reset code sent to Telegram.
+    """
+    service = UserService(db)
+    is_valid = service.verify_reset_code(request.phone_number, request.code)
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired verification code"
+        )
+
+    return {"message": "Verification code is valid"}
+
+
+@router.post("/reset-password", status_code=200)
+def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Reset password using verification code.
+    """
+    # Validate passwords match
+    if request.new_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+
+    # Validate password strength (basic check)
+    if len(request.new_password) < 8:
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters long"
+        )
+
+    service = UserService(db)
+    success = service.reset_password(
+        request.phone_number, request.code, request.new_password
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to reset password. Please check your verification code.",
+        )
+
+    return {"message": "Password reset successfully"}

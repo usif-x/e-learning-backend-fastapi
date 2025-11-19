@@ -46,6 +46,11 @@ class User(Base):
     telegram_hash = Column(String(255), nullable=True)  # Store telegram auth hash
     telegram_verified = Column(Boolean, default=False, nullable=False)
 
+    sex = Column(String(10), nullable=True, server_default="Male")  #
+
+    reset_code = Column(String(6), nullable=True)  # 6-digit verification code
+    reset_code_expires_at = Column(DateTime(timezone=True), nullable=True)
+
     wallet_balance = Column(Numeric(10, 2), nullable=False, default=0)
 
     # Timestamps

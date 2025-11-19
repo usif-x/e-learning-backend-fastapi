@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_description: str = Field(default="Online Learning Management System")
     app_version: str = Field(default="1.0.0")
     app_url: str = Field(default="http://localhost:8000")
+    frontend_url: str = Field(default="http://localhost:3000")
     debug: bool = Field(default=True)
     production: bool = Field(default=False)
     timezone: str = Field(default="UTC")

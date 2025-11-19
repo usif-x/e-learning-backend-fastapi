@@ -8,6 +8,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.models.comment import Comment
 from app.models.community import Community
 from app.models.community_member import CommunityMember
@@ -768,7 +769,7 @@ class PostService:
 
         return post_media
 
-    def add_reaction(
+    async def add_reaction(
         self, post_id: int, user_id: int, reaction_type: str = "like"
     ) -> PostReaction:
         """Add or update reaction to a post"""
@@ -816,7 +817,83 @@ class PostService:
             post.reactions_count += 1
 
             self.db.commit()
+
             self.db.refresh(reaction)
+
+            # Send notification to post owner if they have telegram_id and it's not their own like
+            if post.user_id != user_id:  # Don't notify if user likes their own post
+                post_owner = self.db.query(User).filter(User.id == post.user_id).first()
+                reacted_user = self.db.query(User).filter(User.id == user_id).first()
+
+                if (
+                    post_owner
+                    and post_owner.telegram_id
+                    and str(
+                        post_owner.telegram_id
+                    ).strip()  # Ensure it's not empty/whitespace
+                    and settings.telegram_bot_token
+                    and str(
+                        settings.telegram_bot_token
+                    ).strip()  # Ensure bot token is set
+                ):
+
+                    try:
+                        from app.utils.tg_service import (
+                            InlineKeyboardButton,
+                            TelegramService,
+                        )
+
+                        tg = TelegramService(bot_token=settings.telegram_bot_token)
+                        buttons = [
+                            [
+                                InlineKeyboardButton(
+                                    "فتح",
+                                    url=f"{settings.frontend_url}/community/{post.community_id}/posts/{post.id}",
+                                )
+                            ]
+                        ]
+
+                        # Convert telegram_id to string if it's not already
+                        chat_id = str(post_owner.telegram_id)
+                        if post_owner.sex == "Male":
+                            message = (
+                                f"👤 المستخدم "
+                                f"[{reacted_user.full_name}](tg://user?id={reacted_user.telegram_id}) "
+                                f'أعجب بمنشورك في المجتمع "{post.community.name}".'
+                            )
+
+                        elif post_owner.sex == "Female":
+                            message = (
+                                f"👤 المستخدمة "
+                                f"[{reacted_user.full_name}](tg://user?id={reacted_user.telegram_id}) "
+                                f'أعجبت بمنشورك في المجتمع "{post.community.name}".'
+                            )
+
+                        else:
+                            message = (
+                                f"👤 المستخدم "
+                                f"[{reacted_user.full_name}](tg://user?id={reacted_user.telegram_id}) "
+                                f'أعجب بمنشورك في المجتمع "{post.community.name}".'
+                            )
+
+                        await tg.send_message(
+                            chat_id=chat_id,
+                            text=message,
+                            buttons=buttons,
+                            parse_mode="markdown",
+                        )
+                        print(
+                            f"Telegram notification sent to user {post_owner.id} (telegram_id: {chat_id})"
+                        )
+                    except Exception as e:
+                        # Log the error but don't fail the reaction
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.error(
+                            f"Failed to send Telegram notification to user {post_owner.id}: {e}"
+                        )
+                        print(f"Failed to send Telegram notification: {e}")
 
             return reaction
 

@@ -55,3 +55,25 @@ class UpdatePasswordRequest(BaseModel):
     current_password: str
     new_password: str
     confirm_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request to initiate password reset"""
+
+    phone_number: str  # User's phone number
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """Request to verify reset code"""
+
+    phone_number: str  # User's phone number
+    code: str  # 6-digit verification code
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request to reset password with verification code"""
+
+    phone_number: str  # User's phone number
+    code: str  # 6-digit verification code
+    new_password: str
+    confirm_password: str

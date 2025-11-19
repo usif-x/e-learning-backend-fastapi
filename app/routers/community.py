@@ -470,7 +470,7 @@ async def add_post_media(
 
 
 @router.post("/posts/{post_id}/reactions")
-def add_reaction(
+async def add_reaction(
     post_id: int,
     reaction_in: ReactionCreate,
     db: Session = Depends(get_db),
@@ -481,7 +481,9 @@ def add_reaction(
     If the same reaction exists, it will be removed (toggle).
     """
     service = PostService(db)
-    reaction = service.add_reaction(post_id, current_user.id, reaction_in.reaction_type)
+    reaction = await service.add_reaction(
+        post_id, current_user.id, reaction_in.reaction_type
+    )
 
     if not reaction:
         return {"message": "Reaction removed"}
