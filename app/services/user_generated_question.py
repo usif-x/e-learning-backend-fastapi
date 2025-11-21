@@ -654,37 +654,59 @@ class UserGeneratedQuestionService:
                 detail="This question set is private",
             )
 
-        # Get all completed attempts grouped by user
+        # Get aggregated best score per user first
         from app.models.user import User
 
-        attempts_query = (
+        subq_best = (
             self.db.query(
-                UserGeneratedQuestionAttempt.user_id,
+                UserGeneratedQuestionAttempt.user_id.label("user_id"),
                 func.max(UserGeneratedQuestionAttempt.score).label("best_score"),
-                func.count(UserGeneratedQuestionAttempt.id).label("total_attempts"),
-                func.max(UserGeneratedQuestionAttempt.completed_at).label(
-                    "last_attempt_at"
-                ),
             )
             .filter(
                 UserGeneratedQuestionAttempt.question_set_id == question_set_id,
                 UserGeneratedQuestionAttempt.is_completed == True,
             )
             .group_by(UserGeneratedQuestionAttempt.user_id)
-            .order_by(func.max(UserGeneratedQuestionAttempt.score).desc())
+            .subquery()
+        )
+
+        # For each user, get total attempts and the fastest time among attempts with best_score
+        # Use COALESCE to treat NULL time_taken as large value so they rank worse
+        coalesced_time = func.coalesce(UserGeneratedQuestionAttempt.time_taken, 999999)
+
+        attempts_agg = (
+            self.db.query(
+                subq_best.c.user_id,
+                subq_best.c.best_score,
+                func.count(UserGeneratedQuestionAttempt.id).label("total_attempts"),
+                func.min(coalesced_time).label("best_time"),
+                func.max(UserGeneratedQuestionAttempt.completed_at).label(
+                    "last_attempt_at"
+                ),
+            )
+            .join(
+                UserGeneratedQuestionAttempt,
+                UserGeneratedQuestionAttempt.user_id == subq_best.c.user_id,
+            )
+            .filter(
+                UserGeneratedQuestionAttempt.question_set_id == question_set_id,
+                UserGeneratedQuestionAttempt.is_completed == True,
+                UserGeneratedQuestionAttempt.score == subq_best.c.best_score,
+            )
+            .group_by(subq_best.c.user_id, subq_best.c.best_score)
+            .order_by(subq_best.c.best_score.desc(), func.min(coalesced_time).asc())
         )
 
         # Get total count before pagination
-        total_participants = attempts_query.count()
+        total_participants = attempts_agg.count()
         total_pages = math.ceil(total_participants / size) if size > 0 else 0
 
         # Apply pagination
         offset = (page - 1) * size
-        attempts_paginated = attempts_query.offset(offset).limit(size).all()
+        attempts_paginated = attempts_agg.offset(offset).limit(size).all()
 
         # Build participant list with user info and rankings
         participants = []
-        # Calculate rank based on page position
         rank = (page - 1) * size + 1
         for attempt in attempts_paginated:
             user = self.db.query(User).filter(User.id == attempt.user_id).first()
@@ -695,8 +717,14 @@ class UserGeneratedQuestionService:
                         "user_id": user.id,
                         "user_name": user.display_name,
                         "profile_picture": user.profile_picture,
-                        "best_score": attempt.best_score or 0,
-                        "total_attempts": attempt.total_attempts,
+                        "best_score": int(attempt.best_score or 0),
+                        "total_attempts": int(attempt.total_attempts or 0),
+                        "best_time": (
+                            int(attempt.best_time)
+                            if attempt.best_time is not None
+                            and attempt.best_time != 999999
+                            else None
+                        ),
                         "last_attempt_at": attempt.last_attempt_at,
                         "rank": rank,
                     }
