@@ -1,7 +1,7 @@
 # app/routers/user_generated_question.py
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -45,7 +45,8 @@ router = APIRouter(
     "/generate", response_model=UserGeneratedQuestionDetailResponse, status_code=201
 )
 async def generate_questions_from_topic(
-    request: GenerateUserQuestionsRequest,
+    request: Request,  # ← لازم يكون هنا
+    body: GenerateUserQuestionsRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -57,14 +58,14 @@ async def generate_questions_from_topic(
 
     question_set = await service.generate_questions_from_topic(
         user_id=current_user.id,
-        topic=request.topic,
-        title=request.title,
-        description=request.description,
-        difficulty=request.difficulty,
-        question_type=request.question_type,
-        count=request.count,
-        is_public=request.is_public,
-        notes=request.notes,
+        topic=body.topic,
+        title=body.title,
+        description=body.description,
+        difficulty=body.difficulty,
+        question_type=body.question_type,
+        count=body.count,
+        is_public=body.is_public,
+        notes=body.notes,
     )
 
     return {
@@ -94,6 +95,7 @@ async def generate_questions_from_topic(
     status_code=201,
 )
 async def generate_questions_from_pdf(
+    request: Request,  # ← لازم يكون هنا
     file: UploadFile = File(..., description="PDF file to generate questions from"),
     title: str = Form(..., min_length=3, max_length=255),
     description: Optional[str] = Form(None),
@@ -149,8 +151,9 @@ async def generate_questions_from_pdf(
     response_model=UserGeneratedQuestionDetailResponse,
 )
 async def add_more_questions(
+    request: Request,  # ← لازم يكون هنا
     question_set_id: int,
-    request: AddMoreQuestionsRequest,
+    body: AddMoreQuestionsRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -163,8 +166,8 @@ async def add_more_questions(
     question_set = await service.add_more_questions(
         question_set_id=question_set_id,
         user_id=current_user.id,
-        count=request.count,
-        notes=request.notes,
+        count=body.count,
+        notes=body.notes,
     )
 
     return {
