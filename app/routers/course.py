@@ -1,6 +1,6 @@
 # app/routers/course.py
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin, get_optional_user
 from app.models.admin import Admin
+from app.models.course import Course
 from app.models.user import User
 from app.schemas.course import (
     CourseCreate,
@@ -38,7 +39,7 @@ def autocomplete_courses(
     Returns a list of course names that match the search query.
     Available to all users (authenticated or not).
     """
-    from sqlalchemy import func, text
+    from sqlalchemy import func
 
     # Search for course names that start with the query (case-insensitive)
     search_pattern = f"{q}%"
