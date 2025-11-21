@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.user_generated_question import (
     AddMoreQuestionsRequest,
@@ -39,6 +40,7 @@ router = APIRouter(
 # ==================== Generate Questions ====================
 
 
+@limiter.limit("1/900")
 @router.post(
     "/generate", response_model=UserGeneratedQuestionDetailResponse, status_code=201
 )
@@ -85,6 +87,7 @@ async def generate_questions_from_topic(
     }
 
 
+@limiter.limit("1/900")
 @router.post(
     "/generate-from-pdf",
     response_model=UserGeneratedQuestionDetailResponse,
@@ -140,6 +143,7 @@ async def generate_questions_from_pdf(
     }
 
 
+@limiter.limit("1/900")
 @router.post(
     "/{question_set_id}/add-questions",
     response_model=UserGeneratedQuestionDetailResponse,
