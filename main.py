@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,8 +15,6 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
-# Import the function to create the bot application
-# from app.bot.main import create_bot_app
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.decorator import DBException
@@ -24,229 +23,333 @@ from app.core.limiter import custom_rate_limit_exceeded_handler, limiter
 from app.models import *
 from app.routers import routes
 
-# Create logs directory first
-logs_dir = Path(__file__).parent / "logs"
-logs_dir.mkdir(exist_ok=True)
-print(
-    f"Logs directory created at: {logs_dir.absolute()}"
-)  # Add this to see the actual path
+# ============================================================================
+# Directory Setup
+# ============================================================================
+BASE_DIR = Path(__file__).parent
+LOGS_DIR = BASE_DIR / "logs"
+STORAGE_DIR = BASE_DIR / "storage"
 
-# Create storage directory with absolute path
-storage_dir = Path(__file__).parent / "storage"
-storage_dir.mkdir(parents=True, exist_ok=True)
-print(f"Storage directory created at: {storage_dir.absolute()}")
-print(f"Storage directory exists: {storage_dir.exists()}")
-print(f"Storage directory is directory: {storage_dir.is_dir()}")
+# Create directories with proper permissions
+for directory in [LOGS_DIR, STORAGE_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
+    os.chmod(directory, 0o755)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - [%(name)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
+
+# ============================================================================
+# Logging Configuration
+# ============================================================================
+def setup_logging():
+    """Configure logging for the application."""
+    log_level = logging.DEBUG if settings.debug else logging.INFO
+    log_format = "%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] %(message)s"
+
+    handlers = [
+        logging.StreamHandler(sys.stdout),
         logging.FileHandler(
-            logs_dir / "app.log",  # This will be ./logs/app.log, not /logs/app.log
+            LOGS_DIR / "app.log",
             mode="a",
             encoding="utf-8",
         ),
-    ],
-)
-logger = logging.getLogger(__name__)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-if settings.debug:
-    logging.getLogger().setLevel(logging.DEBUG)
-else:
-    logging.getLogger().setLevel(logging.INFO)
+    ]
+
+    logging.basicConfig(
+        level=log_level,
+        format=log_format,
+        handlers=handlers,
+        force=True,  # Override any existing configuration
+    )
+
+    # Suppress verbose third-party logs
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    return logging.getLogger(__name__)
 
 
-# Define lifespan context manager to manage both DB and Bot
+logger = setup_logging()
+
+
+# ============================================================================
+# Application Lifespan
+# ============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting up application...")
-    # --- Startup ---
-    try:
-        # Initialize Database
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully")
+    """Manage application startup and shutdown."""
+    logger.info("=" * 80)
+    logger.info("Starting application...")
+    logger.info("=" * 80)
 
-        # Initialize application (create super admin if needed)
+    # Startup
+    try:
+        # Initialize database
+        logger.info("Initializing database...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("✓ Database tables created successfully")
+
+        # Initialize application data
         db = SessionLocal()
         try:
             initialize_application(db)
+            logger.info("✓ Application initialized successfully")
         finally:
             db.close()
 
-        # Verify storage directory during startup
-        logger.info(f"Storage directory absolute path: {storage_dir.absolute()}")
-        logger.info(f"Storage directory exists: {storage_dir.exists()}")
-        logger.info(f"Storage directory is writable: {os.access(storage_dir, os.W_OK)}")
-        if storage_dir.exists():
-            logger.info(f"Storage directory contents: {list(storage_dir.iterdir())}")
+        # Verify storage setup
+        logger.info(f"Storage directory: {STORAGE_DIR.absolute()}")
+        logger.info(f"  - Exists: {STORAGE_DIR.exists()}")
+        logger.info(f"  - Writable: {os.access(STORAGE_DIR, os.W_OK)}")
+        logger.info(f"  - Contents: {len(list(STORAGE_DIR.iterdir()))} items")
 
-        # # Create and start the bot
-        # bot_app = create_bot_app()
-        # app.state.bot_app = (
-        #     bot_app  # Store bot_app in app state to access it on shutdown
-        # )
-        # await bot_app.initialize()
-        # await bot_app.updater.start_polling()
-        # await bot_app.start()
-        # logger.info("Telegram Bot has started successfully.")
+        logger.info("✓ Application startup completed successfully")
 
     except Exception as e:
-        logger.error(f"Failed during startup: {e}")
+        logger.error(f"✗ Failed during startup: {e}", exc_info=True)
         raise
 
-    yield  # The application is now running
+    yield  # Application is running
 
-    # --- Shutdown ---
+    # Shutdown
+    logger.info("=" * 80)
     logger.info("Shutting down application...")
-    # bot_app = app.state.bot_app
-    # if bot_app.updater.running:
-    #     await bot_app.updater.stop()
-    # await bot_app.stop()
-    # await bot_app.shutdown()
-    # logger.info("Telegram Bot has been shut down.")
+    logger.info("=" * 80)
+    logger.info("✓ Application shutdown completed")
 
 
-# Create FastAPI app instance with the new lifespan manager
+# ============================================================================
+# FastAPI Application
+# ============================================================================
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
     version=settings.app_version,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
-    debug=settings.debug,
     openapi_url="/openapi.json" if settings.debug else None,
+    debug=settings.debug,
     lifespan=lifespan,
 )
 
-
-# --- The rest of your main.py file remains the same ---
-# (Middleware, exception handlers, routes, etc.)
-
+# ============================================================================
+# Middleware Configuration
+# ============================================================================
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)
 
-
-@app.exception_handler(DBException)
-async def db_exception_handler(request: Request, exc: DBException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": exc.message},
-    )
-
-
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Configure this properly in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# Request timing middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
+    response.headers["X-Process-Time"] = f"{process_time:.4f}"
     return response
+
+
+# Request ID middleware for tracing
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(time.time()))
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+# ============================================================================
+# Exception Handlers
+# ============================================================================
+@app.exception_handler(DBException)
+async def db_exception_handler(request: Request, exc: DBException):
+    logger.error(f"Database exception: {exc.message}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.message, "type": "database_error"},
+    )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Validation error: {exc.errors()}")
     return JSONResponse(
-        status_code=422, content={"detail": exc.errors(), "body": exc.body}
+        status_code=422,
+        content={
+            "error": "Validation error",
+            "details": exc.errors(),
+            "body": exc.body,
+        },
     )
 
 
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.error(f"SQLAlchemy error: {type(exc).__name__}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Database error occurred", "type": str(type(exc).__name__)},
+        content={
+            "error": "Database error occurred",
+            "type": str(type(exc).__name__),
+        },
     )
 
 
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)
+
+
+# ============================================================================
+# Health Check Endpoints
+# ============================================================================
 @app.get("/")
 async def root():
+    """Root endpoint with basic application info."""
     return {
         "app_name": settings.app_name,
         "version": settings.app_version,
         "status": "healthy",
-    }
-
-
-@app.get("/health")
-@limiter.limit("5/minute")
-async def health_check(request: Request):
-    return {
-        "status": "healthy",
-        "timestamp": time.time(),
         "environment": "production" if settings.production else "development",
     }
 
 
-# IMPORTANT: Mount static files BEFORE including routers
-# This ensures /storage routes take precedence
-try:
-    if storage_dir.exists() and storage_dir.is_dir():
+@app.get("/health")
+@limiter.limit("10/minute")
+async def health_check(request: Request):
+    """Detailed health check endpoint."""
+    try:
+        # Test database connection
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        db_status = "healthy"
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        db_status = "unhealthy"
+
+    return {
+        "status": "healthy" if db_status == "healthy" else "degraded",
+        "timestamp": time.time(),
+        "environment": "production" if settings.production else "development",
+        "database": db_status,
+        "storage": "healthy" if STORAGE_DIR.exists() else "unhealthy",
+    }
+
+
+# ============================================================================
+# Static Files & Routes
+# ============================================================================
+# Mount static files BEFORE including routers
+if STORAGE_DIR.exists() and STORAGE_DIR.is_dir():
+    try:
         app.mount(
             "/storage",
-            StaticFiles(directory=str(storage_dir.absolute())),
+            StaticFiles(directory=str(STORAGE_DIR.absolute())),
             name="storage",
         )
-        logger.info(
-            f"✓ Static files mounted successfully: /storage -> {storage_dir.absolute()}"
-        )
-    else:
-        logger.error(
-            f"✗ Storage directory does not exist or is not a directory: {storage_dir.absolute()}"
-        )
-except Exception as e:
-    logger.error(f"✗ Failed to mount static files: {e}")
+        logger.info(f"✓ Static files mounted: /storage -> {STORAGE_DIR.absolute()}")
+    except Exception as e:
+        logger.error(f"✗ Failed to mount static files: {e}", exc_info=True)
+else:
+    logger.error(f"✗ Storage directory not found: {STORAGE_DIR.absolute()}")
 
-# Include routers AFTER mounting static files
+# Include application routers
 for router in routes:
     app.include_router(router)
 
-# --- IMPORTANT CHANGE IN run_server ---
+logger.info(f"✓ Registered {len(routes)} routers")
 
 
-@click.command()
-@click.option(
-    "--env",
-    default="dev",
-    type=click.Choice(["dev", "prod"]),
-    help="Environment to run the server in",
-)
+# ============================================================================
+# CLI Commands
+# ============================================================================
+@click.group()
+def cli():
+    """FastAPI application management CLI."""
+    pass
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", help="Host to bind the server to")
 @click.option("--port", default=8000, help="Port to run the server on")
-@click.option("--host", default="0.0.0.0", help="Host to bind the server to")
-@click.option("--workers", default=None, type=int, help="Number of worker processes")
-def run_server(env: str, port: int, host: str, workers: int | None):
-    """Run the FastAPI server with the specified configuration"""
-    is_dev = env == "dev"
-    log_level = "debug" if is_dev else "info"
-    worker_count = workers or (1 if is_dev else 4)
+@click.option("--reload", is_flag=True, help="Enable auto-reload (development only)")
+def dev(host: str, port: int, reload: bool):
+    """Run development server with Uvicorn."""
+    logger.info("Starting development server...")
+    logger.info(f"  - Host: {host}")
+    logger.info(f"  - Port: {port}")
+    logger.info(f"  - Reload: {reload}")
 
-    logger.info(f"Starting server in {env} mode")
-    logger.info(f"Host: {host}, Port: {port}, Workers: {worker_count}")
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="debug",
+        access_log=True,
+    )
+
+
+@cli.command()
+@click.option("--host", default="0.0.0.0", help="Host to bind the server to")
+@click.option("--port", default=8000, help="Port to run the server on")
+@click.option("--workers", default=4, help="Number of worker processes")
+def prod(host: str, port: int, workers: int):
+    """Run production server with Gunicorn."""
+    logger.info("Starting production server with Gunicorn...")
+    logger.info(f"  - Host: {host}")
+    logger.info(f"  - Port: {port}")
+    logger.info(f"  - Workers: {workers}")
+
+    import subprocess
+
+    cmd = [
+        "gunicorn",
+        "main:app",
+        "--worker-class",
+        "uvicorn.workers.UvicornWorker",
+        "--workers",
+        str(workers),
+        "--bind",
+        f"{host}:{port}",
+        "--access-logfile",
+        "-",
+        "--error-logfile",
+        "-",
+        "--log-level",
+        "info",
+        "--timeout",
+        "120",
+        "--graceful-timeout",
+        "30",
+        "--keep-alive",
+        "5",
+    ]
 
     try:
-        uvicorn.run(
-            "main:app",
-            host=host,
-            port=port,
-            reload=is_dev,
-            workers=worker_count,
-            log_level=log_level,
-        )
-        # REMOVED the main() call from here. The lifespan manager handles it now.
-    except Exception as e:
-        logger.error(f"Failed to start server: {e}")
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Gunicorn failed to start: {e}")
         raise click.ClickException(str(e))
+    except FileNotFoundError:
+        logger.error("Gunicorn not found. Install it with: pip install gunicorn")
+        raise click.ClickException("Gunicorn not installed")
+
+
+@cli.command()
+def info():
+    """Display application information."""
+    click.echo(f"Application: {settings.app_name}")
+    click.echo(f"Version: {settings.app_version}")
+    click.echo(f"Debug Mode: {settings.debug}")
+    click.echo(f"Storage Directory: {STORAGE_DIR.absolute()}")
+    click.echo(f"Logs Directory: {LOGS_DIR.absolute()}")
 
 
 if __name__ == "__main__":
-    run_server()
+    cli()

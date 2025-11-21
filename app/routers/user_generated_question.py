@@ -272,7 +272,7 @@ async def delete_question(
 
 
 @router.get("/my", response_model=UserGeneratedQuestionListResponse)
-def get_my_question_sets(
+async def get_my_question_sets(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -314,7 +314,7 @@ def get_my_question_sets(
 
 
 @router.get("/my/{question_set_id}", response_model=UserGeneratedQuestionDetailResponse)
-def get_my_question_set_detail(
+async def get_my_question_set_detail(
     question_set_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -350,7 +350,7 @@ def get_my_question_set_detail(
 
 
 @router.patch("/my/{question_set_id}", response_model=UserGeneratedQuestionResponse)
-def update_my_question_set(
+async def update_my_question_set(
     question_set_id: int,
     title: Optional[str] = None,
     description: Optional[str] = None,
@@ -391,7 +391,7 @@ def update_my_question_set(
 
 
 @router.delete("/my/{question_set_id}", status_code=204)
-def delete_my_question_set(
+async def delete_my_question_set(
     question_set_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -412,7 +412,7 @@ def delete_my_question_set(
 
 
 @router.get("/public", response_model=PublicQuestionListResponse)
-def get_public_question_sets(
+async def get_public_question_sets(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     difficulty: Optional[str] = Query(None, pattern="^(easy|medium|hard)$"),
@@ -462,7 +462,7 @@ def get_public_question_sets(
 
 
 @router.get("/public/{question_set_id}", response_model=PublicQuestionSetResponse)
-def get_public_question_set_detail(
+async def get_public_question_set_detail(
     question_set_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -534,7 +534,7 @@ def get_public_question_set_detail(
 
 
 @router.get("/{question_set_id}/participants", response_model=ParticipantListResponse)
-def get_question_set_participants(
+async def get_question_set_participants(
     question_set_id: int,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -557,7 +557,7 @@ def get_question_set_participants(
 
 
 @router.get("/attempts/pending", response_model=PendingAttemptsResponse)
-def get_pending_attempts(
+async def get_pending_attempts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -593,7 +593,7 @@ def get_pending_attempts(
 
 
 @router.post("/{question_set_id}/attempt", response_model=StartAttemptResponse)
-def start_question_attempt(
+async def start_question_attempt(
     question_set_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -634,7 +634,7 @@ def start_question_attempt(
 
 
 @router.post("/attempts/{attempt_id}/submit", response_model=AttemptResultResponse)
-def submit_question_attempt(
+async def submit_question_attempt(
     attempt_id: int,
     request: SubmitAttemptRequest,
     current_user: User = Depends(get_current_user),
@@ -693,7 +693,7 @@ def submit_question_attempt(
 
 
 @router.get("/attempts/my", response_model=UserAttemptListResponse)
-def get_my_attempts(
+async def get_my_attempts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -734,7 +734,7 @@ def get_my_attempts(
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptResultResponse)
-def get_attempt_detail(
+async def get_attempt_detail(
     attempt_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
