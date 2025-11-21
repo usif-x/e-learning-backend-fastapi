@@ -9,6 +9,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
+from app.models.admin import Admin
 from app.models.comment import Comment
 from app.models.community import Community
 from app.models.community_member import CommunityMember
@@ -1024,7 +1025,9 @@ class PostService:
 
     # ==================== Post Reporting Methods ====================
 
-    def report_post(self, post_id: int, user_id: int, reason: str) -> ReportedPost:
+    async def report_post(
+        self, post_id: int, user_id: int, reason: str
+    ) -> ReportedPost:
         """Report a post"""
         # Check if post exists
         post = self.db.query(Post).filter(Post.id == post_id).first()
@@ -1064,6 +1067,70 @@ class PostService:
         self.db.add(report)
         self.db.commit()
         self.db.refresh(report)
+
+        # Send notification to all admins
+        admins = self.db.query(Admin).filter(Admin.telegram_id.isnot(None)).all()
+        reporter = self.db.query(User).filter(User.id == user_id).first()
+
+        if (
+            admins
+            and settings.telegram_bot_token
+            and str(settings.telegram_bot_token).strip()
+        ):
+            try:
+                from app.utils.tg_service import InlineKeyboardButton, TelegramService
+
+                tg = TelegramService(bot_token=settings.telegram_bot_token)
+
+                for admin in admins:
+                    try:
+                        buttons = [
+                            [
+                                InlineKeyboardButton(
+                                    "مراجعة التقرير",
+                                    url=f"{settings.frontend_url}/reports/{report.id}",
+                                )
+                            ]
+                        ]
+
+                        # Convert telegram_id to string if it's not already
+                        chat_id = str(admin.telegram_id)
+
+                        message = (
+                            f"🚨 تقرير جديد على منشور\n\n"
+                            f"المجتمع: {post.community.name}\n"
+                            f"المنشور: {post.content or 'بدون عنوان'}\n"
+                            f"المبلغ: [{reporter.full_name}](tg://user?id={reporter.telegram_id})\n"
+                            f"السبب: {reason}\n"
+                            f"الحالة: {report.report_status}"
+                        )
+
+                        await tg.send_message(
+                            chat_id=chat_id,
+                            text=message,
+                            buttons=buttons,
+                            parse_mode="markdown",
+                        )
+                        print(
+                            f"Report notification sent to admin {admin.name} (telegram_id: {chat_id})"
+                        )
+                    except Exception as e:
+                        # Log error for this admin but continue with others
+                        import logging
+
+                        logger = logging.getLogger(__name__)
+                        logger.error(
+                            f"Failed to send report notification to admin {admin.name} (ID: {admin.id}): {e}"
+                        )
+                        print(f"Failed to send notification to admin {admin.name}: {e}")
+
+            except Exception as e:
+                # Log the error but don't fail the report creation
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to send report notifications: {e}")
+                print(f"Failed to send report notifications: {e}")
 
         return report
 
@@ -1180,7 +1247,7 @@ class CommentService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_comment(self, post_id: int, comment_in, user_id: int) -> Comment:
+    async def create_comment(self, post_id: int, comment_in, user_id: int) -> Comment:
         """Create a new comment on a post"""
         # Check if post exists
         post = self.db.query(Post).filter(Post.id == post_id).first()
@@ -1236,6 +1303,78 @@ class CommentService:
 
         self.db.commit()
         self.db.refresh(comment)
+
+        # Send notification to post owner if they have telegram_id and it's not their own comment
+        if post.user_id != user_id:  # Don't notify if user comments on their own post
+            post_owner = self.db.query(User).filter(User.id == post.user_id).first()
+            commenter = self.db.query(User).filter(User.id == user_id).first()
+
+            if (
+                post_owner
+                and post_owner.telegram_id
+                and str(
+                    post_owner.telegram_id
+                ).strip()  # Ensure it's not empty/whitespace
+                and settings.telegram_bot_token
+                and str(settings.telegram_bot_token).strip()  # Ensure bot token is set
+            ):
+                try:
+                    from app.utils.tg_service import (
+                        InlineKeyboardButton,
+                        TelegramService,
+                    )
+
+                    tg = TelegramService(bot_token=settings.telegram_bot_token)
+                    buttons = [
+                        [
+                            InlineKeyboardButton(
+                                "فتح",
+                                url=f"{settings.frontend_url}/community/{post.community_id}/posts/{post.id}",
+                            )
+                        ]
+                    ]
+
+                    # Convert telegram_id to string if it's not already
+                    chat_id = str(post_owner.telegram_id)
+
+                    # Create appropriate message based on commenter's gender
+                    if commenter.sex == "Male":
+                        message = (
+                            f"💬 المستخدم "
+                            f"[{commenter.full_name}](tg://user?id={commenter.telegram_id}) "
+                            f'علق على منشورك في المجتمع "{post.community.name}".'
+                        )
+                    elif commenter.sex == "Female":
+                        message = (
+                            f"💬 المستخدمة "
+                            f"[{commenter.full_name}](tg://user?id={commenter.telegram_id}) "
+                            f'علقت على منشورك في المجتمع "{post.community.name}".'
+                        )
+                    else:
+                        message = (
+                            f"💬 المستخدم "
+                            f"[{commenter.full_name}](tg://user?id={commenter.telegram_id}) "
+                            f'علق على منشورك في المجتمع "{post.community.name}".'
+                        )
+
+                    await tg.send_message(
+                        chat_id=chat_id,
+                        text=message,
+                        buttons=buttons,
+                        parse_mode="markdown",
+                    )
+                    print(
+                        f"Telegram notification sent to user {post_owner.id} (telegram_id: {chat_id}) for new comment"
+                    )
+                except Exception as e:
+                    # Log the error but don't fail the comment creation
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.error(
+                        f"Failed to send Telegram notification to user {post_owner.id}: {e}"
+                    )
+                    print(f"Failed to send Telegram notification: {e}")
 
         return comment
 

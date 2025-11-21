@@ -62,6 +62,9 @@ class JWTManager:
                 expire = datetime.utcnow() + self.user_token_expire
 
             # Create payload
+            current_time = datetime.utcnow()
+            issued_at = login_time if login_time else current_time
+
             payload = {
                 "sub": str(user.id),  # Subject (user ID)
                 "telegram_id": user.telegram_id,
@@ -70,8 +73,8 @@ class JWTManager:
                 "email": user.email,
                 "phone": user.phone_number,
                 "verified": user.is_verified,
-                "exp": expire,
-                "iat": login_time,
+                "exp": int(expire.timestamp()),
+                "iat": int(issued_at.timestamp()),
                 "iss": self.issuer,
                 "type": "access",
                 "user_updated": int(user.updated_at.timestamp()),  # For invalidation
@@ -117,12 +120,13 @@ class JWTManager:
                 expire = datetime.utcnow() + self.refresh_token_expire
 
             # Create payload (minimal for security)
+            current_time = datetime.utcnow()
             payload = {
                 "sub": str(user.id),
                 "telegram_id": user.telegram_id,
                 "user_id": user.id,
-                "exp": expire,
-                "iat": datetime.utcnow(),
+                "exp": int(expire.timestamp()),
+                "iat": int(current_time.timestamp()),
                 "iss": self.issuer,
                 "type": "refresh",
                 "user_updated": int(user.updated_at.timestamp()),
@@ -325,8 +329,8 @@ class JWTManager:
                 "telegram_id": user.telegram_id,
                 "user_id": user.id,
                 "purpose": purpose,
-                "exp": expire,
-                "iat": datetime.utcnow(),
+                "exp": int(expire.timestamp()),
+                "iat": int(datetime.utcnow().timestamp()),
                 "iss": self.issuer,
                 "type": "special",
             }

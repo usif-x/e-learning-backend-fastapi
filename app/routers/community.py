@@ -525,7 +525,7 @@ def get_my_posts(
 @router.post(
     "/posts/{post_id}/comments", response_model=CommentResponse, status_code=201
 )
-def create_comment(
+async def create_comment(
     post_id: int,
     comment_in: CommentCreate,
     db: Session = Depends(get_db),
@@ -536,7 +536,7 @@ def create_comment(
     Set parent_comment_id to reply to another comment.
     """
     service = CommentService(db)
-    comment = service.create_comment(post_id, comment_in, current_user.id)
+    comment = await service.create_comment(post_id, comment_in, current_user.id)
     return comment
 
 
@@ -602,7 +602,7 @@ def delete_comment(
 @router.post(
     "/posts/{post_id}/report", response_model=ReportedPostResponse, status_code=201
 )
-def report_post(
+async def report_post(
     post_id: int,
     report_in: ReportPostRequest,
     db: Session = Depends(get_db),
@@ -613,4 +613,4 @@ def report_post(
     User must be authenticated.
     """
     service = PostService(db)
-    return service.report_post(post_id, current_user.id, report_in.reason)
+    return await service.report_post(post_id, current_user.id, report_in.reason)

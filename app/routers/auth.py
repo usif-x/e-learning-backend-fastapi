@@ -51,6 +51,14 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)) -> AuthRes
     return auth_service.login(request, db)
 
 
+@router.post("/direct-login", response_model=AuthResponse)
+async def direct_login(
+    request: DirectLoginRequest, db: Session = Depends(get_db)
+) -> AuthResponse:
+    """Direct login for returning users (email, phone, or telegram)"""
+    return auth_service.direct_login(request, db)
+
+
 @router.post("/refresh", response_model=AuthResponse)
 async def refresh_token(
     request: RefreshTokenRequest, db: Session = Depends(get_db)

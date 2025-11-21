@@ -198,7 +198,7 @@ class AuthService:
                 )
 
             if existing_user:
-                # User exists, update their details from the latest Telegram login
+                # User exists - immediately log them in and create tokens
                 existing_user.telegram_verified = True
                 existing_user.telegram_verified_at = datetime.utcnow()
 
@@ -210,20 +210,40 @@ class AuthService:
                 ):
                     existing_user.profile_picture = telegram_data.photo_url
 
+                # Update last login
+                login_time = datetime.utcnow()
+                existing_user.last_login = login_time
                 db.commit()
                 db.refresh(existing_user)
+
+                # Generate tokens immediately
+                access_token, refresh_token = jwt_manager.create_token_pair(
+                    user=existing_user, login_time=login_time
+                )
+
+                # Clean up telegram hash since we're not using it for login
+                self.telegram_helper.cleanup_telegram_data(temp_hash)
+
+                logger.info(f"User auto-login successful: {existing_user.telegram_id}")
 
                 return TelegramVerificationResponse(
                     telegram_verified=True,
                     user_exists=True,
-                    telegram_hash=temp_hash,
+                    success=True,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    token_type="bearer",
+                    expires_in=int(
+                        timedelta(minutes=settings.jwt_user_expiration).total_seconds()
+                    ),
+                    user=self._user_to_response(existing_user),
                     user_data={
                         "id": existing_user.id,
                         "display_name": existing_user.display_name,
                         "login_methods": self._get_user_login_methods(existing_user),
                     },
-                    message="Telegram verified. User exists. Proceed to login.",
-                    next_step="login",
+                    message="Telegram verified and user logged in successfully.",
+                    next_step="authenticated",
                 )
             else:
                 # New user, proceed to registration step
@@ -375,9 +395,10 @@ class AuthService:
                 ):
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Invalid password",
+                        detail="Invalid email or password",
                     )
             elif request.login_method == "phone":
+                # For phone login, just verify the phone number matches
                 if user.phone_number != request.phone_number:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -458,6 +479,15 @@ class AuthService:
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Phone number not found",
                     )
+                # If password is provided, verify it
+                if request.password and user.hashed_password:
+                    if not self.password_helper.check_password(
+                        request.password, user.hashed_password
+                    ):
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid phone number or password",
+                        )
 
             elif request.login_method == "telegram":
                 user = (

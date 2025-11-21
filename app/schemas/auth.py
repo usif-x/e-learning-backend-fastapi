@@ -70,10 +70,17 @@ class TelegramVerificationResponse(BaseModel):
 
     telegram_verified: bool
     user_exists: bool
-    telegram_hash: str
+    telegram_hash: Optional[str] = None  # Only for new users needing registration
     user_data: Optional[dict] = None  # Existing user data if found
+    # For immediate login of existing users
+    success: Optional[bool] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    user: Optional["UserResponse"] = None
     message: str
-    next_step: str  # "register" or "login"
+    next_step: str  # "register", "login", or "authenticated"
 
 
 # Registration schemas (after telegram verification)
@@ -223,6 +230,7 @@ class DirectLoginRequest(BaseModel):
         elif login_method == "phone":
             if not phone_number:
                 raise ValueError("Phone number is required for phone login")
+            # Password is optional for phone login (can be passwordless or with password)
         elif login_method == "telegram":
             if not telegram_id:
                 raise ValueError("Telegram ID is required for telegram login")
