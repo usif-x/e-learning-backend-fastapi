@@ -40,7 +40,7 @@ router = APIRouter(
 # ==================== Generate Questions ====================
 
 
-@limiter.limit("1/900")
+@limiter.limit("1/15minute")
 @router.post(
     "/generate", response_model=UserGeneratedQuestionDetailResponse, status_code=201
 )
@@ -88,7 +88,7 @@ async def generate_questions_from_topic(
     }
 
 
-@limiter.limit("1/900")
+@limiter.limit("1/15minute")
 @router.post(
     "/generate-from-pdf",
     response_model=UserGeneratedQuestionDetailResponse,
@@ -145,7 +145,7 @@ async def generate_questions_from_pdf(
     }
 
 
-@limiter.limit("1/900")
+@limiter.limit("1/15minute")
 @router.post(
     "/{question_set_id}/add-questions",
     response_model=UserGeneratedQuestionDetailResponse,
