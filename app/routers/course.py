@@ -24,6 +24,66 @@ router = APIRouter(
 )
 
 
+@router.get("/autocomplete", response_model=List[str])
+def autocomplete_courses(
+    q: str = Query(
+        ..., min_length=1, max_length=100, description="Search query for autocomplete"
+    ),
+    limit: int = Query(10, ge=1, le=50, description="Maximum number of suggestions"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Get course name suggestions for autocomplete.
+    Returns a list of course names that match the search query.
+    Available to all users (authenticated or not).
+    """
+    from sqlalchemy import func, text
+
+    # Search for course names that start with the query (case-insensitive)
+    search_pattern = f"{q}%"
+    results = (
+        db.query(Course.name)
+        .filter(
+            func.lower(Course.name).like(func.lower(search_pattern)),
+            Course.sellable == True,  # Only show sellable courses in autocomplete
+        )
+        .distinct()
+        .limit(limit)
+        .all()
+    )
+
+    # Extract names from results
+    suggestions = [result[0] for result in results]
+    return suggestions
+
+
+@router.get("/search", response_model=CourseListResponse)
+def search_courses(
+    q: str = Query(..., min_length=1, description="Search query"),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    category_id: Optional[int] = Query(None, description="Filter by category"),
+    sellable: Optional[bool] = Query(None, description="Filter by sellable status"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Search courses by name or description.
+    Available to all users (authenticated or not).
+    """
+    service = CourseService(db)
+    courses, pagination = service.get_courses(
+        page=page,
+        size=size,
+        category_id=category_id,
+        search=q,  # Use the search query
+        is_pinned=None,  # Don't filter by pinned in search
+        sellable=sellable,
+    )
+    return {"courses": courses, **pagination}
+
+
 # ==================== Course Endpoints ====================
 
 
