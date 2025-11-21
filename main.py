@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,10 +31,12 @@ print(
     f"Logs directory created at: {logs_dir.absolute()}"
 )  # Add this to see the actual path
 
-# Create storage directory
+# Create storage directory with absolute path
 storage_dir = Path(__file__).parent / "storage"
-storage_dir.mkdir(exist_ok=True)
+storage_dir.mkdir(parents=True, exist_ok=True)
 print(f"Storage directory created at: {storage_dir.absolute()}")
+print(f"Storage directory exists: {storage_dir.exists()}")
+print(f"Storage directory is directory: {storage_dir.is_dir()}")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +74,13 @@ async def lifespan(app: FastAPI):
             initialize_application(db)
         finally:
             db.close()
+
+        # Verify storage directory during startup
+        logger.info(f"Storage directory absolute path: {storage_dir.absolute()}")
+        logger.info(f"Storage directory exists: {storage_dir.exists()}")
+        logger.info(f"Storage directory is writable: {os.access(storage_dir, os.W_OK)}")
+        if storage_dir.exists():
+            logger.info(f"Storage directory contents: {list(storage_dir.iterdir())}")
 
         # # Create and start the bot
         # bot_app = create_bot_app()
@@ -178,11 +188,28 @@ async def health_check(request: Request):
     }
 
 
+# IMPORTANT: Mount static files BEFORE including routers
+# This ensures /storage routes take precedence
+try:
+    if storage_dir.exists() and storage_dir.is_dir():
+        app.mount(
+            "/storage",
+            StaticFiles(directory=str(storage_dir.absolute())),
+            name="storage",
+        )
+        logger.info(
+            f"✓ Static files mounted successfully: /storage -> {storage_dir.absolute()}"
+        )
+    else:
+        logger.error(
+            f"✗ Storage directory does not exist or is not a directory: {storage_dir.absolute()}"
+        )
+except Exception as e:
+    logger.error(f"✗ Failed to mount static files: {e}")
+
+# Include routers AFTER mounting static files
 for router in routes:
     app.include_router(router)
-
-# Mount static files for serving uploaded images
-app.mount("/storage", StaticFiles(directory=str(storage_dir)), name="storage")
 
 # --- IMPORTANT CHANGE IN run_server ---
 
