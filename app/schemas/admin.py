@@ -1,4 +1,4 @@
-# app/schemas/user.py
+# app/schemas/admin.py
 
 from datetime import datetime
 from typing import List, Optional
@@ -19,7 +19,7 @@ class Admin(BaseModel):
 
 
 class AdminResponse(Admin):
-    pass
+    model_config = {"from_attributes": True}
 
 
 class CreateAdmin(BaseModel):
@@ -41,8 +41,8 @@ class ListOfAdminsResponse(BaseModel):
     admins: List[AdminResponse]
     total: str
     page: str
-    next: str
-    prev: str
+    next: Optional[str] = None
+    prev: Optional[str] = None
 
 
 class UpdateAdmin(BaseModel):
