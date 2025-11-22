@@ -1,8 +1,8 @@
 import os
-from typing import List
+from typing import List, Union
 
 from pydantic import Field, ValidationError, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -31,7 +31,9 @@ class Settings(BaseSettings):
     queue_connection: str = Field(default="sync")
 
     # Security Settings
-    cors_allowed_origins: List[str] = Field(default=["http://localhost:3000"])
+    cors_allowed_origins: Union[str, List[str]] = Field(
+        default=["http://localhost:3000"]
+    )
     rate_limit_requests: int = Field(default=100)
     rate_limit_window: int = Field(default=60)
     password_hash_rounds: int = Field(default=12)
@@ -57,7 +59,9 @@ class Settings(BaseSettings):
     # File Uploads
     max_upload_size_mb: int = Field(default=20)
     upload_dir: str = Field(default="storage")
-    allowed_file_types: List[str] = Field(default=["jpg", "png", "pdf", "mp4", "mp3"])
+    allowed_file_types: Union[str, List[str]] = Field(
+        default=["jpg", "png", "pdf", "mp4", "mp3"]
+    )
 
     # Logging
     log_level: str = Field(default="info")
@@ -88,8 +92,11 @@ class Settings(BaseSettings):
 
     # Authorization
     authorization_enabled: bool = Field(default=True)
-    authorization_roles: List[str] = Field(default=["admin", "teacher", "student"])
-    authorization_methods: List[str] = Field(default=["telegram", "jwt"])
+    authorization_roles: Union[str, List[str]] = Field(
+        default=["admin", "teacher", "student"]
+    )
+    authorization_default_role: str = Field(default="student")
+    authorization_methods: Union[str, List[str]] = Field(default=["telegram", "jwt"])
 
     # Redis
     redis_url: str = Field(default="redis://localhost:6379")
@@ -131,12 +138,12 @@ class Settings(BaseSettings):
     def validate_cors(cls, v):
         return cls._parse_csv(v, ["http://localhost:3000"])
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-        "extra": "ignore",
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 def load_settings():
