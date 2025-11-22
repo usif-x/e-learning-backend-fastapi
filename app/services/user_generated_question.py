@@ -50,6 +50,26 @@ class UserGeneratedQuestionService:
                 detail="Failed to generate questions",
             )
 
+        # Determine primary question category and cognitive level
+        question_categories = [
+            q.get("question_category") for q in questions if q.get("question_category")
+        ]
+        cognitive_levels = [
+            q.get("cognitive_level") for q in questions if q.get("cognitive_level")
+        ]
+
+        # Get most common category/level (fallback to first if tie)
+        primary_category = (
+            max(set(question_categories), key=question_categories.count)
+            if question_categories
+            else None
+        )
+        primary_cognitive_level = (
+            max(set(cognitive_levels), key=cognitive_levels.count)
+            if cognitive_levels
+            else None
+        )
+
         # Create question set
         question_set = UserGeneratedQuestion(
             user_id=user_id,
@@ -62,6 +82,8 @@ class UserGeneratedQuestionService:
             questions=questions,
             total_questions=len(questions),
             source_type="topic",
+            question_category=primary_category,
+            cognitive_level=primary_cognitive_level,
         )
 
         self.db.add(question_set)
@@ -117,6 +139,26 @@ class UserGeneratedQuestionService:
                 detail="Failed to generate questions from PDF",
             )
 
+        # Determine primary question category and cognitive level
+        question_categories = [
+            q.get("question_category") for q in questions if q.get("question_category")
+        ]
+        cognitive_levels = [
+            q.get("cognitive_level") for q in questions if q.get("cognitive_level")
+        ]
+
+        # Get most common category/level (fallback to first if tie)
+        primary_category = (
+            max(set(question_categories), key=question_categories.count)
+            if question_categories
+            else None
+        )
+        primary_cognitive_level = (
+            max(set(cognitive_levels), key=cognitive_levels.count)
+            if cognitive_levels
+            else None
+        )
+
         # Extract topic from PDF content or use title
         topic = title  # Can be enhanced to extract from PDF
 
@@ -133,6 +175,8 @@ class UserGeneratedQuestionService:
             total_questions=len(questions),
             source_type="pdf",
             source_file_name=uuid_filename,  # Store UUID filename
+            question_category=primary_category,
+            cognitive_level=primary_cognitive_level,
         )
 
         self.db.add(question_set)
@@ -268,6 +312,29 @@ class UserGeneratedQuestionService:
         question_set.questions = current_questions + new_questions
         question_set.total_questions = len(question_set.questions)
 
+        # Update primary category and cognitive level based on all questions
+        all_categories = [
+            q.get("question_category")
+            for q in question_set.questions
+            if q.get("question_category")
+        ]
+        all_cognitive_levels = [
+            q.get("cognitive_level")
+            for q in question_set.questions
+            if q.get("cognitive_level")
+        ]
+
+        question_set.question_category = (
+            max(set(all_categories), key=all_categories.count)
+            if all_categories
+            else None
+        )
+        question_set.cognitive_level = (
+            max(set(all_cognitive_levels), key=all_cognitive_levels.count)
+            if all_cognitive_levels
+            else None
+        )
+
         # Mark the questions field as modified for SQLAlchemy
         from sqlalchemy.orm import attributes
 
@@ -313,6 +380,29 @@ class UserGeneratedQuestionService:
 
         # Update the question
         question_set.questions[question_index] = question_data
+
+        # Update primary category and cognitive level
+        all_categories = [
+            q.get("question_category")
+            for q in question_set.questions
+            if q.get("question_category")
+        ]
+        all_cognitive_levels = [
+            q.get("cognitive_level")
+            for q in question_set.questions
+            if q.get("cognitive_level")
+        ]
+
+        question_set.question_category = (
+            max(set(all_categories), key=all_categories.count)
+            if all_categories
+            else None
+        )
+        question_set.cognitive_level = (
+            max(set(all_cognitive_levels), key=all_cognitive_levels.count)
+            if all_cognitive_levels
+            else None
+        )
 
         # Mark the questions field as modified for SQLAlchemy
         from sqlalchemy.orm import attributes
@@ -368,6 +458,29 @@ class UserGeneratedQuestionService:
 
         # Update total questions count
         question_set.total_questions = len(question_set.questions)
+
+        # Update primary category and cognitive level
+        all_categories = [
+            q.get("question_category")
+            for q in question_set.questions
+            if q.get("question_category")
+        ]
+        all_cognitive_levels = [
+            q.get("cognitive_level")
+            for q in question_set.questions
+            if q.get("cognitive_level")
+        ]
+
+        question_set.question_category = (
+            max(set(all_categories), key=all_categories.count)
+            if all_categories
+            else None
+        )
+        question_set.cognitive_level = (
+            max(set(all_cognitive_levels), key=all_cognitive_levels.count)
+            if all_cognitive_levels
+            else None
+        )
 
         # Mark the questions field as modified for SQLAlchemy
         from sqlalchemy.orm import attributes

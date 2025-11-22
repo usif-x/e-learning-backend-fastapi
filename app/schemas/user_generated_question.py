@@ -65,6 +65,13 @@ class QuestionDetail(BaseModel):
     explanation_en: Optional[str] = None
     explanation_ar: Optional[str] = None
     question_type: Optional[str] = None
+    question_category: Optional[str] = Field(
+        None, description="Question category: standard, critical, linking"
+    )
+    cognitive_level: Optional[str] = Field(
+        None,
+        description="Cognitive level: remember, understand, apply, analyze, evaluate, create",
+    )
 
 
 class UserGeneratedQuestionResponse(BaseModel):
@@ -84,6 +91,13 @@ class UserGeneratedQuestionResponse(BaseModel):
     source_type: str
     source_file_name: Optional[str]
     attempt_count: int
+    question_category: Optional[str] = Field(
+        None, description="Primary question category: standard, critical, linking"
+    )
+    cognitive_level: Optional[str] = Field(
+        None,
+        description="Primary cognitive level: remember, understand, apply, analyze, evaluate, create",
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -221,6 +235,13 @@ class PublicQuestionSetResponse(BaseModel):
     source_type: str
     source_file_name: Optional[str]
     attempt_count: int
+    question_category: Optional[str] = Field(
+        None, description="Primary question category: standard, critical, linking"
+    )
+    cognitive_level: Optional[str] = Field(
+        None,
+        description="Primary cognitive level: remember, understand, apply, analyze, evaluate, create",
+    )
     created_at: datetime
     creator_name: str
 

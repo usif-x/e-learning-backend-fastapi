@@ -38,6 +38,18 @@ class UserGeneratedQuestion(Base):
     questions = Column(JSONB, nullable=False, default=[])
     total_questions = Column(Integer, nullable=False, default=0)
 
+    # Question categorization (aggregated from questions)
+    question_category = Column(
+        String(50),
+        nullable=True,
+        comment="Primary question category: standard, critical, linking",
+    )
+    cognitive_level = Column(
+        String(50),
+        nullable=True,
+        comment="Primary cognitive level: remember, understand, apply, analyze, evaluate, create",
+    )
+
     # Source information
     source_type = Column(String(20), nullable=False)  # 'topic' or 'pdf'
     source_file_name = Column(String(255), nullable=True)  # PDF filename if from PDF
@@ -46,7 +58,6 @@ class UserGeneratedQuestion(Base):
     attempt_count = Column(
         Integer, nullable=False, default=0
     )  # How many times attempted by others
-
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

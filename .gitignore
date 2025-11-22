@@ -206,3 +206,5 @@ logs/
 # Storage (uploaded files)
 storage/
 !storage/.gitkeep
+
+migrations/
