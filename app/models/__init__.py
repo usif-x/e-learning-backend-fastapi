@@ -17,6 +17,7 @@ from .post_media import PostMedia
 from .post_reaction import PostReaction
 from .practice_quiz import PracticeQuiz
 from .quiz_attempt import QuizAttempt
+from .quiz_source import QuizSource
 
 # Import and setup relationships
 from .relations import setup_relationships
@@ -46,4 +47,5 @@ __all__ = [
     "ReportedPost",
     "User",
     "UserGeneratedQuestion",
+    "QuizSource",
 ]

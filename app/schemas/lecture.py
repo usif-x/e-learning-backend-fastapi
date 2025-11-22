@@ -426,3 +426,32 @@ class PracticeQuizDetailedResultResponse(BaseModel):
     questions_with_results: Optional[List[PracticeQuizQuestionResult]]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== AI Quiz Generation Schemas ====================
+
+
+class GenerateQuizRequest(BaseModel):
+    """Request schema for AI quiz generation"""
+
+    lecture_id: int
+    topic: str = Field(..., min_length=1, max_length=200)
+    difficulty: str = Field("medium", pattern="^(easy|medium|hard)$")
+    count: int = Field(5, ge=1, le=20)
+    notes: Optional[str] = Field(None, max_length=500)
+    previous_questions: Optional[List[str]] = None
+
+
+class GenerateQuizResponse(BaseModel):
+    """Response schema for AI quiz generation"""
+
+    success: bool
+    topic: str
+    questions: List[QuizQuestion]
+    source_id: Optional[int] = None  # For PDF sources
+
+
+class AddQuestionsRequest(BaseModel):
+    """Request schema for adding questions to existing quiz content"""
+
+    questions: List[QuizQuestion] = Field(..., min_length=1)

@@ -264,6 +264,128 @@ class LectureService:
 
         return content
 
+    # ==================== Quiz Question Management (Admin) ====================
+
+    def get_quiz_questions(self, content_id: int) -> Optional[LectureContent]:
+        """Return the lecture content (including quiz questions) for admin review."""
+        content = (
+            self.db.query(LectureContent)
+            .filter(LectureContent.id == content_id)
+            .first()
+        )
+
+        if not content or content.content_type != "quiz":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Quiz content not found"
+            )
+
+        return content
+
+    def edit_quiz_question(
+        self, content_id: int, question_index: int, question_data: dict
+    ) -> LectureContent:
+        """Edit a single quiz question inside a lecture content (admin only)."""
+        content = (
+            self.db.query(LectureContent)
+            .filter(LectureContent.id == content_id)
+            .first()
+        )
+
+        if not content or content.content_type != "quiz":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Quiz content not found"
+            )
+
+        questions = content.questions or []
+        if question_index < 0 or question_index >= len(questions):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Question index {question_index} out of range",
+            )
+
+        # Replace the question at index with provided data
+        questions[question_index] = question_data
+
+        # Mark modified and save
+        from sqlalchemy.orm import attributes
+
+        content.questions = questions
+        attributes.flag_modified(content, "questions")
+
+        self.db.commit()
+        self.db.refresh(content)
+
+        return content
+
+    def delete_quiz_question(
+        self, content_id: int, question_index: int
+    ) -> LectureContent:
+        """Delete a single quiz question inside a lecture content (admin only)."""
+        content = (
+            self.db.query(LectureContent)
+            .filter(LectureContent.id == content_id)
+            .first()
+        )
+
+        if not content or content.content_type != "quiz":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Quiz content not found"
+            )
+
+        questions = content.questions or []
+        if question_index < 0 or question_index >= len(questions):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Question index {question_index} out of range",
+            )
+
+        # Prevent deleting last question
+        if len(questions) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete the last question from a quiz",
+            )
+
+        questions.pop(question_index)
+
+        from sqlalchemy.orm import attributes
+
+        content.questions = questions
+        attributes.flag_modified(content, "questions")
+
+        self.db.commit()
+        self.db.refresh(content)
+
+        return content
+
+    def add_questions_to_content(
+        self, content_id: int, new_questions: List[dict]
+    ) -> LectureContent:
+        """Add new questions to existing quiz content (admin only)."""
+        content = (
+            self.db.query(LectureContent)
+            .filter(LectureContent.id == content_id)
+            .first()
+        )
+
+        if not content or content.content_type != "quiz":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Quiz content not found"
+            )
+
+        questions = content.questions or []
+        questions.extend(new_questions)
+
+        from sqlalchemy.orm import attributes
+
+        content.questions = questions
+        attributes.flag_modified(content, "questions")
+
+        self.db.commit()
+        self.db.refresh(content)
+
+        return content
+
     def delete_content(self, content_id: int) -> bool:
         """Delete a content item"""
         content = (

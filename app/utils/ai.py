@@ -760,6 +760,253 @@ Return ONLY the JSON object, no markdown formatting."""
         )
 
         return self._extract_json_from_response(response_text)
+        """
+        Extract text content from a PDF file path
+
+        Args:
+            pdf_path: Path to the PDF file
+
+        Returns:
+            Extracted text content
+
+        Raises:
+            HTTPException: If PDF processing fails
+        """
+        try:
+            with open(pdf_path, "rb") as f:
+                pdf_file = BytesIO(f.read())
+
+            pdf_reader = PdfReader(pdf_file)
+            text_content = []
+
+            for page_num, page in enumerate(pdf_reader.pages, 1):
+                try:
+                    text = page.extract_text()
+                    if text.strip():
+                        text_content.append(f"--- Page {page_num} ---\n{text}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract text from page {page_num}: {str(e)}"
+                    )
+                    continue
+
+            if not text_content:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No text content found in PDF. The file may be empty or contain only images.",
+                )
+
+            return "\n\n".join(text_content)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to process PDF: {str(e)}")
+            raise HTTPException(
+                status_code=400, detail=f"Failed to process PDF file: {str(e)}"
+            )
+
+    async def generate_questions_from_pdf_path(
+        self,
+        pdf_path: str,
+        difficulty: str = "medium",
+        count: int = 5,
+        question_type: str = "multiple_choice",
+        notes: Optional[str] = None,
+        previous_questions: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Extract content from PDF path and generate questions
+
+        Args:
+            pdf_path: Path to the PDF file
+            difficulty: Question difficulty (easy, medium, hard)
+            count: Number of questions to generate
+            question_type: Type of questions
+            notes: Optional instructions for question generation
+            previous_questions: Optional list of previously generated questions
+
+        Returns:
+            Dictionary with parsed questions
+        """
+        pdf_content = await self.extract_text_from_pdf_path(pdf_path)
+
+        max_content_length = 6000
+        if len(pdf_content) > max_content_length:
+            pdf_content = (
+                pdf_content[:max_content_length]
+                + "\n\n[Content truncated for length...]"
+            )
+
+        system_message = """You are an expert educational content creator specializing in cognitive development and assessment design.
+
+CRITICAL REQUIREMENTS - Question Distribution:
+Your questions MUST follow this exact distribution:
+- 70% Standard Questions: Direct assessment of knowledge from the content
+- 20% Critical Thinking Questions: Require analysis, evaluation, synthesis of content
+- 10% Linking Questions: Connect multiple concepts or sections from the provided content
+
+Generate UNIQUE and DIVERSE questions based on the provided content.
+Return ONLY valid JSON without any markdown formatting.
+
+QUESTION TYPE DEFINITIONS:
+
+1. STANDARD QUESTIONS (70%):
+   - Test recall and comprehension of content
+   - Direct questions about facts, definitions, processes from the material
+
+2. CRITICAL THINKING QUESTIONS (20%):
+   - Apply content to new scenarios
+   - Analyze relationships or cause-effect from the material
+   - Evaluate arguments or solutions presented in the content
+   - Require deeper reasoning beyond memorization
+
+3. LINKING QUESTIONS (10%):
+   - Connect concepts from different sections of the content
+   - Show how ideas relate across the material
+   - Synthesize information from multiple parts of the document"""
+
+        notes_instruction = ""
+        if notes:
+            notes_instruction = f"\n\nADDITIONAL INSTRUCTIONS:\n{notes}\n"
+
+        previous_context = ""
+        if previous_questions and len(previous_questions) > 0:
+            previous_list = "\n".join([f"- {q}" for q in previous_questions[:20]])
+            previous_context = f"""\n\nPREVIOUSLY GENERATED QUESTIONS (DO NOT REPEAT):
+{previous_list}
+
+Generate COMPLETELY DIFFERENT questions.\n"""
+
+        if question_type == "essay":
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} difficulty essay/short answer questions.
+
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions (describe/explain from content)
+- 20% Critical Thinking: {int(count * 0.2)} questions (analyze/evaluate/apply)
+- 10% Linking: {max(1, int(count * 0.1))} questions (connect multiple concepts from content)
+
+{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Format as JSON:
+{{
+    "questions": [
+        {{
+            "question": "Essay/short answer question based on content",
+            "key_points": ["Point 1 from content", "Point 2", "Point 3"],
+            "suggested_length": "2-3 paragraphs" | "1-2 sentences" | "One word/phrase",
+            "grading_criteria": "What to look for in answers",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "understand" | "apply" | "analyze" | "evaluate" | "create"
+        }}
+    ]
+}}
+
+Return ONLY the JSON object, no markdown formatting."""
+
+        elif question_type == "mixed":
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} difficulty mixed questions.
+
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Mix MCQ (4 options, 60-70%) and True/False (2 options, 30-40%).
+
+Format as JSON:
+{{
+    "questions": [
+        {{
+            "question": "Question based on content",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
+        }}
+    ]
+}}
+
+Return ONLY the JSON object, no markdown formatting."""
+
+        elif question_type == "true_false":
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} True/False questions.
+
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Format as JSON:
+{{
+    "questions": [
+        {{
+            "question": "True/False statement from content",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
+        }}
+    ]
+}}
+
+Return ONLY the JSON object, no markdown formatting."""
+
+        else:  # multiple_choice
+            prompt = f"""Based on the following content, generate {count} UNIQUE {difficulty} multiple choice questions.
+
+MANDATORY DISTRIBUTION:
+- 70% Standard: {int(count * 0.7)} questions
+- 20% Critical Thinking: {int(count * 0.2)} questions
+- 10% Linking: {max(1, int(count * 0.1))} questions
+
+{notes_instruction}{previous_context}
+
+Content:
+{pdf_content}
+
+Format as JSON:
+{{
+    "questions": [
+        {{
+            "question": "Question based on content",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation with content reference (English)",
+            "explanation_ar": "شرح مع مرجع للمحتوى (Egyptian Arabic)",
+            "question_category": "standard" | "critical_thinking" | "linking",
+            "cognitive_level": "remember" | "understand" | "apply" | "analyze" | "evaluate"
+        }}
+    ]
+}}
+
+Return ONLY the JSON object, no markdown formatting."""
+
+        response_text = await self.generate_completion(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=0.9,
+            max_tokens=5500,
+        )
+
+        return self._extract_json_from_response(response_text)
 
 
 # Create singleton instance

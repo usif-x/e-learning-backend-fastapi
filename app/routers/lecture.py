@@ -11,6 +11,7 @@ from app.models.admin import Admin
 from app.models.quiz_attempt import QuizAttempt
 from app.models.user import User
 from app.schemas.lecture import (
+    AddQuestionsRequest,
     GenerateQuizRequest,
     GenerateQuizResponse,
     LectureContentCreate,
@@ -25,11 +26,15 @@ from app.schemas.lecture import (
     QuizAttemptListResponse,
     QuizAttemptResponse,
     QuizAttemptStats,
+    QuizQuestion,
     StartQuizResponse,
 )
+from app.schemas.quiz_source import QuizSourceCreate
 from app.services.lecture import LectureService
 from app.services.quiz_attempt import QuizAttemptService
+from app.services.quiz_source import QuizSourceService
 from app.utils.ai import ai_service
+from app.utils.file_upload import file_upload_service
 
 router = APIRouter(
     prefix="/courses/{course_id}/lectures",
@@ -201,6 +206,70 @@ def get_content(
         )
 
     return content
+
+
+# ==================== Admin Quiz Question Management ====================
+
+
+@router.get(
+    "/{lecture_id}/contents/{content_id}/questions", response_model=List[QuizQuestion]
+)
+def admin_get_quiz_questions(
+    course_id: int,
+    lecture_id: int,
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """Admin: Get full quiz questions (includes correct answers) for review."""
+    service = LectureService(db)
+    content = service.get_quiz_questions(content_id)
+    return content.questions or []
+
+
+@router.put("/{lecture_id}/contents/{content_id}/questions/{question_index}")
+def admin_edit_quiz_question(
+    course_id: int,
+    lecture_id: int,
+    content_id: int,
+    question_index: int,
+    question: QuizQuestion,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """Admin: Edit a single quiz question."""
+    service = LectureService(db)
+    updated_content = service.edit_quiz_question(
+        content_id, question_index, question.model_dump()
+    )
+    return {
+        "success": True,
+        "content_id": updated_content.id,
+        "total_questions": (
+            len(updated_content.questions) if updated_content.questions else 0
+        ),
+    }
+
+
+@router.delete("/{lecture_id}/contents/{content_id}/questions/{question_index}")
+def admin_delete_quiz_question(
+    course_id: int,
+    lecture_id: int,
+    content_id: int,
+    question_index: int,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """Admin: Delete a single quiz question."""
+    service = LectureService(db)
+    updated_content = service.delete_quiz_question(content_id, question_index)
+    return {
+        "success": True,
+        "content_id": updated_content.id,
+        "total_questions": (
+            len(updated_content.questions) if updated_content.questions else 0
+        ),
+    }
 
 
 @router.patch(
@@ -803,6 +872,21 @@ async def generate_quiz_from_pdf(
         )
 
     try:
+        # Save the PDF file
+        uuid_filename, relative_path = await file_upload_service.save_file(
+            file, folder="quiz_sources", allowed_extensions=[".pdf"]
+        )
+
+        # Create quiz source record
+        source_service = QuizSourceService(db)
+        source = source_service.create_source(
+            source_in=QuizSourceCreate(
+                filename=file.filename,
+                file_path=relative_path,
+            ),
+            uploaded_by=current_admin.id,
+        )
+
         # Generate questions from PDF using AI with mixed types (MCQ + True/False)
         result = await ai_service.generate_questions_from_pdf(
             file=file,
@@ -829,6 +913,7 @@ async def generate_quiz_from_pdf(
             "success": True,
             "topic": topic,
             "questions": questions,
+            "source_id": source.id,  # Include source ID for future reference
         }
 
     except HTTPException:
@@ -838,3 +923,123 @@ async def generate_quiz_from_pdf(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate questions from PDF: {str(e)}",
         )
+
+
+@router.post(
+    "/ai/generate-more-from-source/{source_id}", response_model=GenerateQuizResponse
+)
+async def generate_more_questions_from_source(
+    course_id: int,
+    source_id: int,
+    lecture_id: int = Query(..., description="Lecture ID to associate quiz with"),
+    difficulty: str = Query("medium", pattern="^(easy|medium|hard)$"),
+    count: int = Query(5, ge=1, le=20),
+    notes: Optional[str] = Query(
+        None, description="Custom instructions for question generation"
+    ),
+    previous_questions: Optional[List[str]] = Query(
+        None, description="Previously generated questions to avoid"
+    ),
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """
+    Generate additional quiz questions from a saved PDF source.
+    Admin only.
+
+    Uses a previously uploaded PDF to generate more questions.
+    Supports mixed question types (MCQ and True/False).
+
+    Optional parameters:
+    - notes: Custom instructions (e.g., "Focus on practical applications", "Avoid topic X")
+    - previous_questions: List of previously generated question texts to avoid duplicates
+    """
+    if not ai_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service is not configured",
+        )
+
+    # Verify lecture exists and belongs to the course
+    service = LectureService(db)
+    lecture = service.get_lecture(lecture_id, course_id)
+    if not lecture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lecture not found in this course",
+        )
+
+    # Get the source
+    source_service = QuizSourceService(db)
+    source = source_service.get_source(source_id)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quiz source not found",
+        )
+
+    # Get the absolute path to the PDF
+    pdf_path = file_upload_service.get_absolute_path(source.file_path)
+    if not pdf_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF file not found on disk",
+        )
+
+    try:
+        # Generate questions from saved PDF using AI
+        result = await ai_service.generate_questions_from_pdf_path(
+            pdf_path=str(pdf_path),
+            difficulty=difficulty,
+            count=count,
+            question_type="mixed",
+            notes=notes,
+            previous_questions=previous_questions,
+        )
+
+        # Parse questions from AI response
+        questions = result.get("questions", [])
+
+        if not questions:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="AI failed to generate questions from PDF",
+            )
+
+        return {
+            "success": True,
+            "topic": source.filename.rsplit(".", 1)[0],
+            "questions": questions,
+            "source_id": source.id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate questions from saved PDF: {str(e)}",
+        )
+
+
+@router.post("/{lecture_id}/contents/{content_id}/add-questions")
+def admin_add_questions_to_quiz(
+    course_id: int,
+    lecture_id: int,
+    content_id: int,
+    request: AddQuestionsRequest,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """Admin: Add new questions to an existing quiz content."""
+    service = LectureService(db)
+    updated_content = service.add_questions_to_content(
+        content_id, [q.model_dump() for q in request.questions]
+    )
+    return {
+        "success": True,
+        "content_id": updated_content.id,
+        "total_questions": (
+            len(updated_content.questions) if updated_content.questions else 0
+        ),
+    }

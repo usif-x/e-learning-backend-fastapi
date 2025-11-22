@@ -35,6 +35,7 @@ class FileUploadService:
             self.base_storage_path / "users",
             self.base_storage_path / "lectures",
             self.base_storage_path / "user_questions",
+            self.base_storage_path / "quiz_sources",
         ]
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
