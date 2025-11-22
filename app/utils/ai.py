@@ -652,7 +652,7 @@ Begin generation now. Return ONLY the JSON object."""
             prompt=prompt,
             system_message=ENHANCED_SYSTEM_MESSAGE,
             temperature=0.85,  # Slightly lower for more consistency
-            max_tokens=10000,
+            max_tokens=64000,
         )
 
         return self._extract_json_from_response(response_text)
@@ -1053,7 +1053,7 @@ Begin generation now. Return ONLY the JSON object."""
             prompt=prompt,
             system_message=ENHANCED_SYSTEM_MESSAGE,
             temperature=0.7,  # Lower temperature for content fidelity
-            max_tokens=10000,
+            max_tokens=64000,
         )
 
         return self._extract_json_from_response(response_text)
@@ -1217,7 +1217,7 @@ Format as JSON:
             prompt=prompt,
             system_message=ENHANCED_SYSTEM_MESSAGE,
             temperature=0.7,
-            max_tokens=10000,
+            max_tokens=64000,
         )
 
         return self._extract_json_from_response(response_text)
