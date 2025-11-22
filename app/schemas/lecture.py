@@ -17,6 +17,13 @@ class QuizQuestion(BaseModel):
     )
     explanation_en: str = Field(..., description="English explanation of the answer")
     explanation_ar: str = Field(..., description="Arabic explanation of the answer")
+    question_category: Optional[str] = Field(
+        None, description="Category of the question (standard|critical|linking)"
+    )
+    cognitive_level: Optional[str] = Field(
+        None,
+        description="Cognitive level (remember|understand|apply|analyze|evaluate|create)",
+    )
 
 
 class QuizQuestionForAttempt(BaseModel):
@@ -24,6 +31,8 @@ class QuizQuestionForAttempt(BaseModel):
 
     question: str
     options: List[str]
+    question_category: Optional[str] = None
+    cognitive_level: Optional[str] = None
 
 
 class QuizQuestionWithResult(BaseModel):
@@ -36,6 +45,8 @@ class QuizQuestionWithResult(BaseModel):
     is_correct: bool
     explanation_en: Optional[str] = None
     explanation_ar: Optional[str] = None
+    question_category: Optional[str] = None
+    cognitive_level: Optional[str] = None
 
 
 class LectureContentBase(BaseModel):
@@ -407,6 +418,8 @@ class PracticeQuizQuestionResult(BaseModel):
     source_course_id: Optional[int]
     source_lecture_id: Optional[int]
     source_quiz_title: Optional[str]
+    question_category: Optional[str] = None
+    cognitive_level: Optional[str] = None
 
 
 class PracticeQuizDetailedResultResponse(BaseModel):
