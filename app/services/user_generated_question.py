@@ -641,7 +641,7 @@ class UserGeneratedQuestionService:
 
     def get_public_question_sets(
         self,
-        current_user_id: int,
+        current_user_id: Optional[int],
         page: int = 1,
         size: int = 20,
         difficulty: Optional[str] = None,
@@ -681,47 +681,56 @@ class UserGeneratedQuestionService:
         # Build response with attempt status
         result = []
         for qs in question_sets:
-            # Check if user has completed attempts
-            user_attempts = (
-                self.db.query(UserGeneratedQuestionAttempt)
-                .filter(
-                    UserGeneratedQuestionAttempt.question_set_id == qs.id,
-                    UserGeneratedQuestionAttempt.user_id == current_user_id,
-                    UserGeneratedQuestionAttempt.is_completed == True,
-                )
-                .all()
-            )
+            user_has_attempted = False
+            user_best_score = None
+            user_has_pending_attempt = False
+            pending_attempt_id = None
+            pending_attempt_started_at = None
 
-            user_has_attempted = len(user_attempts) > 0
-            user_best_score = (
-                max([a.score for a in user_attempts if a.score is not None])
-                if user_attempts
-                else None
-            )
-
-            # Check for pending (incomplete) attempt
-            pending_attempt = (
-                self.db.query(UserGeneratedQuestionAttempt)
-                .filter(
-                    UserGeneratedQuestionAttempt.question_set_id == qs.id,
-                    UserGeneratedQuestionAttempt.user_id == current_user_id,
-                    UserGeneratedQuestionAttempt.is_completed == False,
+            if current_user_id is not None:
+                # Check if user has completed attempts
+                user_attempts = (
+                    self.db.query(UserGeneratedQuestionAttempt)
+                    .filter(
+                        UserGeneratedQuestionAttempt.question_set_id == qs.id,
+                        UserGeneratedQuestionAttempt.user_id == current_user_id,
+                        UserGeneratedQuestionAttempt.is_completed == True,
+                    )
+                    .all()
                 )
-                .first()
-            )
+
+                user_has_attempted = len(user_attempts) > 0
+                user_best_score = (
+                    max([a.score for a in user_attempts if a.score is not None])
+                    if user_attempts
+                    else None
+                )
+
+                # Check for pending (incomplete) attempt
+                pending_attempt = (
+                    self.db.query(UserGeneratedQuestionAttempt)
+                    .filter(
+                        UserGeneratedQuestionAttempt.question_set_id == qs.id,
+                        UserGeneratedQuestionAttempt.user_id == current_user_id,
+                        UserGeneratedQuestionAttempt.is_completed == False,
+                    )
+                    .first()
+                )
+
+                user_has_pending_attempt = pending_attempt is not None
+                pending_attempt_id = pending_attempt.id if pending_attempt else None
+                pending_attempt_started_at = (
+                    pending_attempt.started_at if pending_attempt else None
+                )
 
             result.append(
                 {
                     "question_set": qs,
                     "user_has_attempted": user_has_attempted,
                     "user_best_score": user_best_score,
-                    "user_has_pending_attempt": pending_attempt is not None,
-                    "pending_attempt_id": (
-                        pending_attempt.id if pending_attempt else None
-                    ),
-                    "pending_attempt_started_at": (
-                        pending_attempt.started_at if pending_attempt else None
-                    ),
+                    "user_has_pending_attempt": user_has_pending_attempt,
+                    "pending_attempt_id": pending_attempt_id,
+                    "pending_attempt_started_at": pending_attempt_started_at,
                     "creator_name": qs.user.display_name if qs.user else "Unknown",
                 }
             )
@@ -1072,3 +1081,223 @@ class UserGeneratedQuestionService:
         )
 
         return pending_attempts
+
+    # ==================== Guest Attempts ====================
+
+    def start_guest_attempt(
+        self,
+        question_set_id: int,
+        phone_number: str,
+        guest_name: Optional[str] = None,
+    ) -> Tuple["GuestQuestionAttempt", UserGeneratedQuestion]:
+        """
+        Start a guest attempt on a question set
+        """
+        # Check if phone number exists in users table
+        from app.models.user import User
+        from app.models.user_generated_question import GuestQuestionAttempt
+
+        existing_user = (
+            self.db.query(User).filter(User.phone_number == phone_number).first()
+        )
+
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="A registered user with this phone number already exists. Please login to attempt quizzes.",
+            )
+
+        # Get question set
+        question_set = (
+            self.db.query(UserGeneratedQuestion)
+            .filter(
+                UserGeneratedQuestion.id == question_set_id,
+                UserGeneratedQuestion.is_public == True,
+            )
+            .first()
+        )
+
+        if not question_set:
+            raise HTTPException(
+                status_code=404,
+                detail="Question set not found or not public",
+            )
+
+        # Create guest attempt
+        attempt = GuestQuestionAttempt(
+            question_set_id=question_set_id,
+            phone_number=phone_number,
+            guest_name=guest_name,
+            total_questions=question_set.total_questions,
+        )
+
+        self.db.add(attempt)
+        self.db.commit()
+        self.db.refresh(attempt)
+
+        return attempt, question_set
+
+    def submit_guest_attempt(
+        self,
+        attempt_id: int,
+        phone_number: str,
+        answers: List[dict],
+        time_taken: int,
+    ) -> "GuestQuestionAttempt":
+        """
+        Submit answers for a guest attempt (can be partial/incomplete)
+        """
+        from app.models.user_generated_question import GuestQuestionAttempt
+
+        # Get attempt
+        attempt = (
+            self.db.query(GuestQuestionAttempt)
+            .filter(
+                GuestQuestionAttempt.id == attempt_id,
+                GuestQuestionAttempt.phone_number == phone_number,
+            )
+            .first()
+        )
+
+        if not attempt:
+            raise HTTPException(
+                status_code=404,
+                detail="Attempt not found",
+            )
+
+        if attempt.is_completed:
+            raise HTTPException(
+                status_code=400,
+                detail="Attempt already completed",
+            )
+
+        # Get question set to validate answers
+        question_set = attempt.question_set
+
+        # Process answers and calculate score
+        processed_answers = []
+        correct_count = 0
+
+        for answer_data in answers:
+            question_index = answer_data.get("question_index")
+            selected_answer = answer_data.get("selected_answer")
+
+            if question_index is None:
+                continue
+
+            if 0 <= question_index < len(question_set.questions):
+                question = question_set.questions[question_index]
+                correct_answer = question.get("correct_answer")
+
+                if selected_answer is not None:
+                    is_correct = selected_answer == correct_answer
+                    if is_correct:
+                        correct_count += 1
+                else:
+                    is_correct = None  # Not answered yet
+
+                processed_answers.append(
+                    {
+                        "question_index": question_index,
+                        "selected_answer": selected_answer,
+                        "correct_answer": correct_answer,
+                        "is_correct": is_correct,
+                    }
+                )
+
+        # Check if attempt is complete (all questions answered)
+        is_complete = len(processed_answers) == attempt.total_questions and all(
+            ans["selected_answer"] is not None for ans in processed_answers
+        )
+
+        # Update attempt
+        attempt.answers = processed_answers
+        attempt.time_taken = time_taken
+
+        if is_complete:
+            # Calculate score only if complete
+            score = (
+                int((correct_count / attempt.total_questions) * 100)
+                if attempt.total_questions > 0
+                else 0
+            )
+            attempt.score = score
+            attempt.correct_answers = correct_count
+            attempt.is_completed = True
+            attempt.completed_at = func.now()
+
+            # Update question set attempt count only for completed attempts
+            question_set.attempt_count += 1
+        else:
+            # Partial submission - save as pending
+            attempt.is_completed = False
+            attempt.score = None
+            attempt.correct_answers = None
+            attempt.completed_at = None
+
+        self.db.commit()
+        self.db.refresh(attempt)
+
+        return attempt
+
+    def get_guest_attempt_detail(
+        self,
+        attempt_id: int,
+        phone_number: str,
+    ) -> "GuestQuestionAttempt":
+        """
+        Get detailed guest attempt result
+        """
+        from app.models.user_generated_question import GuestQuestionAttempt
+
+        attempt = (
+            self.db.query(GuestQuestionAttempt)
+            .filter(
+                GuestQuestionAttempt.id == attempt_id,
+                GuestQuestionAttempt.phone_number == phone_number,
+            )
+            .first()
+        )
+
+        if not attempt:
+            raise HTTPException(
+                status_code=404,
+                detail="Attempt not found",
+            )
+
+        return attempt
+
+    def get_guest_attempts_by_phone(
+        self,
+        phone_number: str,
+        page: int = 1,
+        size: int = 20,
+    ) -> Tuple[List["GuestQuestionAttempt"], dict]:
+        """
+        Get all guest attempts by phone number
+        """
+        from app.models.user_generated_question import GuestQuestionAttempt
+
+        query = self.db.query(GuestQuestionAttempt).filter(
+            GuestQuestionAttempt.phone_number == phone_number
+        )
+
+        total = query.count()
+        total_pages = math.ceil(total / size) if size > 0 else 0
+
+        offset = (page - 1) * size
+        attempts = (
+            query.order_by(desc(GuestQuestionAttempt.started_at))
+            .offset(offset)
+            .limit(size)
+            .all()
+        )
+
+        pagination = {
+            "total": total,
+            "page": page,
+            "size": size,
+            "total_pages": total_pages,
+        }
+
+        return attempts, pagination

@@ -118,3 +118,44 @@ class UserGeneratedQuestionAttempt(Base):
 
     class Config:
         from_attributes = True
+
+
+class GuestQuestionAttempt(Base):
+    """
+    Track guest attempts on user-generated questions (users without accounts)
+    """
+
+    __tablename__ = "guest_question_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_set_id = Column(
+        Integer, ForeignKey("user_generated_questions.id"), nullable=False, index=True
+    )
+    phone_number = Column(String(20), nullable=False, index=True)
+
+    # Guest info (optional, for future reference)
+    guest_name = Column(String(100), nullable=True)
+
+    # Attempt results
+    answers = Column(
+        JSONB, nullable=True, default=[]
+    )  # Guest's answers with correctness
+    score = Column(Integer, nullable=True)  # Percentage score
+    correct_answers = Column(Integer, nullable=True)
+    total_questions = Column(Integer, nullable=False)
+    time_taken = Column(Integer, nullable=True)  # Seconds
+
+    # Status
+    is_completed = Column(Boolean, default=False, nullable=False)
+
+    # Timestamps
+    started_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    question_set = relationship("UserGeneratedQuestion", backref="guest_attempts")
+
+    class Config:
+        from_attributes = True

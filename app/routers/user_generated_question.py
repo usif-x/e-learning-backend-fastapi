@@ -1,11 +1,20 @@
 # app/routers/user_generated_question.py
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_optional_user
 from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.user_generated_question import (
@@ -15,6 +24,10 @@ from app.schemas.user_generated_question import (
     EditQuestionRequest,
     GenerateUserQuestionsFromPDFRequest,
     GenerateUserQuestionsRequest,
+    GuestAttemptListResponse,
+    GuestAttemptRequest,
+    GuestAttemptResultResponse,
+    GuestStartAttemptResponse,
     ParticipantListResponse,
     PendingAttemptsResponse,
     PublicQuestionListResponse,
@@ -424,16 +437,17 @@ async def get_public_question_sets(
     size: int = Query(20, ge=1, le=100),
     difficulty: Optional[str] = Query(None, pattern="^(easy|medium|hard)$"),
     search: Optional[str] = Query(None, max_length=200),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """
     Browse all public question sets created by other users.
-    Shows if you've attempted each set and your best score.
+    Shows if you've attempted each set and your best score (for authenticated users only).
     """
     service = UserGeneratedQuestionService(db)
+    current_user_id = current_user.id if current_user else None
     results, pagination = service.get_public_question_sets(
-        current_user_id=current_user.id,
+        current_user_id=current_user_id,
         page=page,
         size=size,
         difficulty=difficulty,
@@ -471,48 +485,62 @@ async def get_public_question_sets(
 @router.get("/public/{question_set_id}", response_model=PublicQuestionSetResponse)
 async def get_public_question_set_detail(
     question_set_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
 ):
     """
     Get detailed view of a public question set.
-    Shows if you've attempted it and your best score.
+    Shows if you've attempted it and your best score (for authenticated users only).
     """
     service = UserGeneratedQuestionService(db)
     question_set = service.get_public_question_set_detail(
         question_set_id=question_set_id,
     )
 
-    # Check if user has completed attempts
-    from app.models.user_generated_question import UserGeneratedQuestionAttempt
+    # Initialize attempt status
+    user_has_attempted = False
+    user_best_score = None
+    user_has_pending_attempt = False
+    pending_attempt_id = None
+    pending_attempt_started_at = None
 
-    user_attempts = (
-        db.query(UserGeneratedQuestionAttempt)
-        .filter(
-            UserGeneratedQuestionAttempt.question_set_id == question_set_id,
-            UserGeneratedQuestionAttempt.user_id == current_user.id,
-            UserGeneratedQuestionAttempt.is_completed == True,
+    if current_user:
+        # Check if user has completed attempts
+        from app.models.user_generated_question import UserGeneratedQuestionAttempt
+
+        user_attempts = (
+            db.query(UserGeneratedQuestionAttempt)
+            .filter(
+                UserGeneratedQuestionAttempt.question_set_id == question_set_id,
+                UserGeneratedQuestionAttempt.user_id == current_user.id,
+                UserGeneratedQuestionAttempt.is_completed == True,
+            )
+            .all()
         )
-        .all()
-    )
 
-    user_has_attempted = len(user_attempts) > 0
-    user_best_score = (
-        max([a.score for a in user_attempts if a.score is not None])
-        if user_attempts
-        else None
-    )
-
-    # Check for pending (incomplete) attempt
-    pending_attempt = (
-        db.query(UserGeneratedQuestionAttempt)
-        .filter(
-            UserGeneratedQuestionAttempt.question_set_id == question_set_id,
-            UserGeneratedQuestionAttempt.user_id == current_user.id,
-            UserGeneratedQuestionAttempt.is_completed == False,
+        user_has_attempted = len(user_attempts) > 0
+        user_best_score = (
+            max([a.score for a in user_attempts if a.score is not None])
+            if user_attempts
+            else None
         )
-        .first()
-    )
+
+        # Check for pending (incomplete) attempt
+        pending_attempt = (
+            db.query(UserGeneratedQuestionAttempt)
+            .filter(
+                UserGeneratedQuestionAttempt.question_set_id == question_set_id,
+                UserGeneratedQuestionAttempt.user_id == current_user.id,
+                UserGeneratedQuestionAttempt.is_completed == False,
+            )
+            .first()
+        )
+
+        user_has_pending_attempt = pending_attempt is not None
+        pending_attempt_id = pending_attempt.id if pending_attempt else None
+        pending_attempt_started_at = (
+            pending_attempt.started_at if pending_attempt else None
+        )
 
     return {
         "id": question_set.id,
@@ -532,11 +560,9 @@ async def get_public_question_set_detail(
         ),
         "user_has_attempted": user_has_attempted,
         "user_best_score": user_best_score,
-        "user_has_pending_attempt": pending_attempt is not None,
-        "pending_attempt_id": pending_attempt.id if pending_attempt else None,
-        "pending_attempt_started_at": (
-            pending_attempt.started_at if pending_attempt else None
-        ),
+        "user_has_pending_attempt": user_has_pending_attempt,
+        "pending_attempt_id": pending_attempt_id,
+        "pending_attempt_started_at": pending_attempt_started_at,
     }
 
 
@@ -792,4 +818,241 @@ async def get_attempt_detail(
         "topic": question_set.topic,
         "difficulty": question_set.difficulty,
         "questions_with_results": questions_with_results,
+    }
+
+
+# ==================== Guest Attempts ====================
+
+
+@router.post(
+    "/{question_set_id}/guest-attempt", response_model=GuestStartAttemptResponse
+)
+async def start_guest_attempt(
+    question_set_id: int,
+    request: GuestAttemptRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Start a guest attempt on a public question set.
+    Guest must provide phone number to save their data.
+    If phone number exists in users table, tells user to login instead.
+    """
+    service = UserGeneratedQuestionService(db)
+    attempt, question_set = service.start_guest_attempt(
+        question_set_id=question_set_id,
+        phone_number=request.phone_number,
+        guest_name=request.guest_name,
+    )
+
+    # Build questions without correct answers
+    questions_for_attempt = []
+    for idx, q in enumerate(question_set.questions):
+        questions_for_attempt.append(
+            {
+                "question": q.get("question"),
+                "options": q.get("options", []),
+                "question_type": q.get("question_type", "multiple_choice"),
+            }
+        )
+
+    return {
+        "attempt_id": attempt.id,
+        "question_set_id": question_set.id,
+        "phone_number": attempt.phone_number,
+        "title": question_set.title,
+        "description": question_set.description,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "total_questions": question_set.total_questions,
+        "questions": questions_for_attempt,
+        "started_at": attempt.started_at,
+    }
+
+
+@router.post("/guest-attempt-result", response_model=GuestAttemptResultResponse)
+async def submit_guest_attempt(
+    attempt_id: int = Form(..., description="Guest attempt ID"),
+    phone_number: str = Form(..., description="Phone number used for the attempt"),
+    answers: str = Form(..., description="JSON string of answers array"),
+    time_taken: int = Form(..., ge=0, description="Time taken in seconds"),
+    db: Session = Depends(get_db),
+):
+    """
+    Submit answers for a guest attempt.
+    Answers should be JSON string that parses to array of {question_index, selected_answer}.
+    """
+    import json
+
+    try:
+        answers_data = json.loads(answers)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid answers format")
+
+    service = UserGeneratedQuestionService(db)
+    attempt = service.submit_guest_attempt(
+        attempt_id=attempt_id,
+        phone_number=phone_number,
+        answers=answers_data,
+        time_taken=time_taken,
+    )
+
+    question_set = attempt.question_set
+
+    # Build questions with results
+    questions_with_results = []
+    if attempt.answers:
+        answer_map = {ans["question_index"]: ans for ans in attempt.answers}
+
+        for idx, question in enumerate(question_set.questions):
+            answer_data = answer_map.get(idx, {})
+
+            if not answer_data:
+                # Unanswered question
+                is_correct = None
+                user_answer = None
+            else:
+                is_correct = answer_data.get("is_correct")
+                user_answer = answer_data.get("selected_answer")
+
+            questions_with_results.append(
+                {
+                    "question": question.get("question"),
+                    "options": question.get("options", []),
+                    "user_answer": user_answer,
+                    "correct_answer": question.get("correct_answer"),
+                    "is_correct": is_correct,
+                    "explanation_en": question.get("explanation_en"),
+                    "explanation_ar": question.get("explanation_ar"),
+                }
+            )
+
+    return {
+        "id": attempt.id,
+        "question_set_id": attempt.question_set_id,
+        "phone_number": attempt.phone_number,
+        "guest_name": attempt.guest_name,
+        "score": attempt.score,
+        "correct_answers": attempt.correct_answers,
+        "total_questions": attempt.total_questions,
+        "time_taken": attempt.time_taken,
+        "is_completed": attempt.is_completed,
+        "status": "completed" if attempt.is_completed else "pending",
+        "started_at": attempt.started_at,
+        "completed_at": attempt.completed_at,
+        "title": question_set.title,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "questions_with_results": questions_with_results,
+    }
+
+
+@router.get(
+    "/guest-attempt-result/{attempt_id}", response_model=GuestAttemptResultResponse
+)
+async def get_guest_attempt_detail(
+    attempt_id: int,
+    phone_number: str = Query(..., description="Phone number used for the attempt"),
+    db: Session = Depends(get_db),
+):
+    """
+    Get detailed result of a guest attempt.
+    Requires phone number for verification.
+    """
+    service = UserGeneratedQuestionService(db)
+    attempt = service.get_guest_attempt_detail(
+        attempt_id=attempt_id,
+        phone_number=phone_number,
+    )
+
+    question_set = attempt.question_set
+
+    # Build questions with results
+    questions_with_results = []
+    if attempt.answers:
+        answer_map = {ans["question_index"]: ans for ans in attempt.answers}
+
+        for idx, question in enumerate(question_set.questions):
+            answer_data = answer_map.get(idx, {})
+
+            if not answer_data:
+                # Unanswered question
+                is_correct = None
+                user_answer = None
+            else:
+                is_correct = answer_data.get("is_correct")
+                user_answer = answer_data.get("selected_answer")
+
+            questions_with_results.append(
+                {
+                    "question": question.get("question"),
+                    "options": question.get("options", []),
+                    "user_answer": user_answer,
+                    "correct_answer": question.get("correct_answer"),
+                    "is_correct": is_correct,
+                    "explanation_en": question.get("explanation_en"),
+                    "explanation_ar": question.get("explanation_ar"),
+                }
+            )
+
+    return {
+        "id": attempt.id,
+        "question_set_id": attempt.question_set_id,
+        "phone_number": attempt.phone_number,
+        "guest_name": attempt.guest_name,
+        "score": attempt.score,
+        "correct_answers": attempt.correct_answers,
+        "total_questions": attempt.total_questions,
+        "time_taken": attempt.time_taken,
+        "is_completed": attempt.is_completed,
+        "status": "completed" if attempt.is_completed else "pending",
+        "started_at": attempt.started_at,
+        "completed_at": attempt.completed_at,
+        "title": question_set.title,
+        "topic": question_set.topic,
+        "difficulty": question_set.difficulty,
+        "questions_with_results": questions_with_results,
+    }
+
+
+@router.get("/guest-attempts", response_model=GuestAttemptListResponse)
+async def get_guest_attempts_by_phone(
+    phone_number: str = Query(..., description="Phone number to retrieve attempts for"),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all guest attempts by phone number.
+    Useful for guests to see their attempt history.
+    """
+    service = UserGeneratedQuestionService(db)
+    attempts, pagination = service.get_guest_attempts_by_phone(
+        phone_number=phone_number,
+        page=page,
+        size=size,
+    )
+
+    return {
+        "attempts": [
+            {
+                "id": att.id,
+                "question_set_id": att.question_set_id,
+                "phone_number": att.phone_number,
+                "guest_name": att.guest_name,
+                "score": att.score,
+                "correct_answers": att.correct_answers,
+                "total_questions": att.total_questions,
+                "time_taken": att.time_taken,
+                "is_completed": att.is_completed,
+                "status": "completed" if att.is_completed else "pending",
+                "started_at": att.started_at,
+                "completed_at": att.completed_at,
+                "title": att.question_set.title,
+                "topic": att.question_set.topic,
+                "difficulty": att.question_set.difficulty,
+                "questions_with_results": None,  # Not included in list view
+            }
+            for att in attempts
+        ],
+        **pagination,
     }

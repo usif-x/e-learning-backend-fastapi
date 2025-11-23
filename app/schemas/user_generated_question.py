@@ -176,7 +176,7 @@ class QuestionWithResult(BaseModel):
     options: List[str]
     user_answer: Optional[int]
     correct_answer: int
-    is_correct: bool
+    is_correct: Optional[bool]
     explanation_en: Optional[str]
     explanation_ar: Optional[str]
 
@@ -311,3 +311,80 @@ class PendingAttemptsResponse(BaseModel):
 
     pending_attempts: List[PendingAttemptInfo]
     total: int
+
+
+# ==================== Guest Attempt Schemas ====================
+
+
+class GuestAttemptRequest(BaseModel):
+    """Request to start a guest attempt"""
+
+    phone_number: str = Field(
+        ...,
+        pattern=r"^\+?[1-9]\d{1,14}$",
+        description="Phone number in international format",
+    )
+    guest_name: Optional[str] = Field(
+        None, max_length=100, description="Optional guest name"
+    )
+
+
+class GuestStartAttemptResponse(BaseModel):
+    """Response when starting a guest attempt"""
+
+    attempt_id: int
+    question_set_id: int
+    phone_number: str
+    title: str
+    description: Optional[str]
+    topic: str
+    difficulty: str
+    total_questions: int
+    questions: List[QuestionDetail]  # Without correct answers
+    started_at: datetime
+
+
+class GuestSubmitAttemptRequest(BaseModel):
+    """Submit guest attempt answers"""
+
+    answers: List[dict] = Field(
+        ..., description="Array of {question_index, selected_answer}"
+    )
+    time_taken: int = Field(..., ge=0, description="Time taken in seconds")
+
+
+class GuestAttemptResultResponse(BaseModel):
+    """Detailed guest attempt result"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question_set_id: int
+    phone_number: str
+    guest_name: Optional[str]
+    score: Optional[int]
+    correct_answers: Optional[int]
+    total_questions: int
+    time_taken: Optional[int]
+    is_completed: bool
+    status: str = Field(..., description="Status: 'pending' or 'completed'")
+    started_at: datetime
+    completed_at: Optional[datetime]
+
+    # Question set info
+    title: str
+    topic: str
+    difficulty: str
+
+    # Results
+    questions_with_results: Optional[List[QuestionWithResult]] = None
+
+
+class GuestAttemptListResponse(BaseModel):
+    """List of guest attempts by phone number"""
+
+    attempts: List[GuestAttemptResultResponse]
+    total: int
+    page: int
+    size: int
+    total_pages: int
