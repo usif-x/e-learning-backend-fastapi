@@ -175,7 +175,7 @@ class QuestionWithResult(BaseModel):
     question: str
     options: List[str]
     user_answer: Optional[int]
-    correct_answer: int
+    correct_answer: Optional[int]
     is_correct: Optional[bool]
     explanation_en: Optional[str]
     explanation_ar: Optional[str]

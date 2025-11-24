@@ -77,3 +77,65 @@ class ResetPasswordRequest(BaseModel):
     code: str  # 6-digit verification code
     new_password: str
     confirm_password: str
+
+
+# User Management Schemas (for admin use)
+
+
+class UserManagementResponse(BaseModel):
+    """User response for admin management"""
+
+    id: int
+    full_name: str
+    email: Optional[str]
+    phone_number: Optional[str]
+    telegram_id: str
+    telegram_username: Optional[str]
+    is_active: bool
+    status: str
+    wallet_balance: Decimal
+    created_at: datetime
+    updated_at: datetime
+    last_login: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UpdateUserRequest(BaseModel):
+    """Request to update user information (admin only)"""
+
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    telegram_username: Optional[str] = None
+    is_active: Optional[bool] = None
+    status: Optional[str] = None
+    wallet_balance: Optional[Decimal] = None
+
+
+class UpdateUserStatusRequest(BaseModel):
+    """Request to update user status"""
+
+    status: str  # 'student', 'teacher', 'admin', 'blocked', 'pending'
+
+
+class UserActivationRequest(BaseModel):
+    """Request to activate/deactivate user account"""
+
+    is_active: bool
+
+
+class ListUsersResponse(BaseModel):
+    """Paginated list of users for admin management"""
+
+    users: list[UserManagementResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+    next_page: Optional[int] = None
+    prev_page: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)

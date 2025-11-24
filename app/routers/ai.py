@@ -320,3 +320,124 @@ async def admin_generate_questions_from_pdf(
         "questions": questions,
         "admin_id": current_admin.id,
     }
+
+
+@router.post("/explain-pdf-content")
+async def explain_pdf_content(
+    file: UploadFile = File(...),
+    include_examples: bool = Form(True),
+    detailed_explanation: bool = Form(True),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extract and explain PDF content page by page in Egyptian Arabic
+
+    Args:
+        file: PDF file to explain
+        include_examples: Whether to include examples in explanations (default: True)
+        detailed_explanation: Whether to provide detailed explanations (default: True)
+        current_user: Authenticated user
+
+    Returns:
+        Page-by-page explanations in Egyptian Arabic with medical terms preserved
+    """
+    explanation_result = await ai_service.explain_pdf_content(
+        file=file,
+        include_examples=include_examples,
+        detailed_explanation=detailed_explanation,
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "pages": explanation_result["pages"],
+        "total_pages": explanation_result["total_pages"],
+        "filtered_pages": explanation_result.get("filtered_pages", 0),
+        "language": explanation_result["language"],
+        "medical_terms_preserved": explanation_result["medical_terms_preserved"],
+    }
+
+
+@router.post("/explain-topic-content")
+async def explain_topic_content(
+    topic: str = Form(...),
+    include_examples: bool = Form(True),
+    detailed_explanation: bool = Form(True),
+    subject_breakdown: bool = Form(True),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Explain a medical topic comprehensively in Egyptian Arabic, organized by subjects
+
+    Args:
+        topic: The medical topic to explain (e.g., "diabetes", "hypertension", "cardiology")
+        include_examples: Whether to include examples in explanations (default: True)
+        detailed_explanation: Whether to provide detailed explanations (default: True)
+        subject_breakdown: Whether to break down into sub-subjects (default: True)
+        current_user: Authenticated user
+
+    Returns:
+        Comprehensive topic explanation organized by subjects in Egyptian Arabic
+    """
+    if len(topic.strip()) < 2:
+        raise HTTPException(
+            status_code=400, detail="Topic must be at least 2 characters"
+        )
+
+    explanation_result = await ai_service.explain_topic_content(
+        topic=topic.strip(),
+        include_examples=include_examples,
+        detailed_explanation=detailed_explanation,
+        subject_breakdown=subject_breakdown,
+    )
+
+    return {
+        "success": True,
+        "topic": explanation_result.get("topic", topic),
+        "subjects": explanation_result["subjects"],
+        "language": explanation_result["language"],
+        "medical_terms_preserved": explanation_result["medical_terms_preserved"],
+    }
+
+
+@router.post("/admin/explain-topic-content")
+async def admin_explain_topic_content(
+    topic: str = Form(...),
+    include_examples: bool = Form(True),
+    detailed_explanation: bool = Form(True),
+    subject_breakdown: bool = Form(True),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """
+    Admin endpoint to explain a medical topic comprehensively in Egyptian Arabic, organized by subjects
+
+    Args:
+        topic: The medical topic to explain (e.g., "diabetes", "hypertension", "cardiology")
+        include_examples: Whether to include examples in explanations (default: True)
+        detailed_explanation: Whether to provide detailed explanations (default: True)
+        subject_breakdown: Whether to break down into sub-subjects (default: True)
+        current_admin: Authenticated admin
+
+    Returns:
+        Comprehensive topic explanation organized by subjects in Egyptian Arabic
+    """
+    if len(topic.strip()) < 2:
+        raise HTTPException(
+            status_code=400, detail="Topic must be at least 2 characters"
+        )
+
+    explanation_result = await ai_service.explain_topic_content(
+        topic=topic.strip(),
+        include_examples=include_examples,
+        detailed_explanation=detailed_explanation,
+        subject_breakdown=subject_breakdown,
+    )
+
+    return {
+        "success": True,
+        "topic": explanation_result.get("topic", topic),
+        "subjects": explanation_result["subjects"],
+        "language": explanation_result["language"],
+        "medical_terms_preserved": explanation_result["medical_terms_preserved"],
+        "admin_id": current_admin.id,
+    }

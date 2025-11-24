@@ -196,3 +196,117 @@ class UserService:
 
         self.db.commit()
         return True
+
+    # User Management Methods (for admin use)
+
+    def get_all_users(
+        self, page: int = 1, per_page: int = 20, search: Optional[str] = None
+    ) -> dict:
+        """
+        Get paginated list of all users with optional search.
+        Returns dict with users list and pagination info.
+        """
+        query = self.db.query(User)
+
+        # Apply search filter if provided
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                or_(
+                    User.full_name.ilike(search_filter),
+                    User.email.ilike(search_filter),
+                    User.phone_number.ilike(search_filter),
+                    User.telegram_username.ilike(search_filter),
+                    User.telegram_id.ilike(search_filter),
+                )
+            )
+
+        # Get total count
+        total = query.count()
+
+        # Apply pagination
+        users = (
+            query.order_by(User.created_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+
+        # Calculate pagination info
+        total_pages = (total + per_page - 1) // per_page
+        has_next = page < total_pages
+        has_prev = page > 1
+
+        return {
+            "users": users,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "has_next": has_next,
+            "has_prev": has_prev,
+            "next_page": page + 1 if has_next else None,
+            "prev_page": page - 1 if has_prev else None,
+        }
+
+    def update_user(self, user_id: int, update_data: dict) -> Optional[User]:
+        """
+        Update user information.
+        Returns updated user if successful, None if user not found.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+
+        # Update fields if provided
+        for field, value in update_data.items():
+            if value is not None:
+                setattr(user, field, value)
+
+        user.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def update_user_status(self, user_id: int, status: str) -> Optional[User]:
+        """
+        Update user status.
+        Returns updated user if successful, None if user not found.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+
+        user.status = status
+        user.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def activate_deactivate_user(self, user_id: int, is_active: bool) -> Optional[User]:
+        """
+        Activate or deactivate user account.
+        Returns updated user if successful, None if user not found.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+
+        user.is_active = is_active
+        user.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def delete_user(self, user_id: int) -> bool:
+        """
+        Delete a user permanently.
+        Returns True if user was deleted, False if user not found.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False
+
+        self.db.delete(user)
+        self.db.commit()
+        return True

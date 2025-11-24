@@ -1222,6 +1222,375 @@ Format as JSON:
 
         return self._extract_json_from_response(response_text)
 
+    async def explain_pdf_content(
+        self,
+        file: UploadFile,
+        include_examples: bool = True,
+        detailed_explanation: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Extract and explain PDF content page by page in Egyptian Arabic
+
+        Args:
+            file: Uploaded PDF file
+            include_examples: Whether to include examples in explanations
+            detailed_explanation: Whether to provide detailed explanations
+
+        Returns:
+            Dictionary with page explanations in JSON format
+        """
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="File must be a PDF")
+
+        # Extract text from each page
+        contents = await file.read()
+        pdf_file = BytesIO(contents)
+
+        pdf_reader = PdfReader(pdf_file)
+        pages_content = []
+
+        for page_num, page in enumerate(pdf_reader.pages, 1):
+            try:
+                text = page.extract_text()
+                if text.strip():
+                    pages_content.append(
+                        {"page_number": page_num, "content": text.strip()}
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to extract text from page {page_num}: {str(e)}")
+                continue
+
+        if not pages_content:
+            raise HTTPException(
+                status_code=400,
+                detail="No text content found in PDF. The file may be empty or contain only images.",
+            )
+
+        # Filter out non-content pages (intro, conclusion, thank you pages, etc.)
+        filtered_pages = []
+        skip_keywords = [
+            "thank you",
+            "thanks",
+            "شكراً",
+            "شكر",
+            "any questions",
+            "أي أسئلة",
+            "prof.",
+            "professor",
+            "dr.",
+            "doctor",
+            "د.",
+            "دكتور",
+            "بروفيسور",
+            "introduction",
+            "مقدمة",
+            "by prof",
+            "بواسطة",
+            "author",
+            "مؤلف",
+            "references",
+            "مراجع",
+            "bibliography",
+            "قائمة المراجع",
+            "acknowledgments",
+            "شكر وتقدير",
+            "table of contents",
+            "فهرس",
+            "index",
+            "دليل",
+            "glossary",
+            "قاموس مصطلحات",
+        ]
+
+        for page_data in pages_content:
+            content = page_data["content"].lower()
+            page_num = page_data["page_number"]
+
+            # Skip pages that are too short (likely intro/conclusion)
+            if len(content.split()) < 20:
+                logger.info(
+                    f"Skipping page {page_num}: too short ({len(content.split())} words)"
+                )
+                continue
+
+            # Skip pages containing skip keywords
+            should_skip = False
+            for keyword in skip_keywords:
+                if keyword.lower() in content:
+                    logger.info(
+                        f"Skipping page {page_num}: contains keyword '{keyword}'"
+                    )
+                    should_skip = True
+                    break
+
+            if should_skip:
+                continue
+
+            # Skip first page if it looks like a title page
+            if page_num == 1 and len(content.split()) < 50:
+                logger.info(f"Skipping page {page_num}: likely title page")
+                continue
+
+            # Skip last page if it looks like conclusion/thanks
+            if page_num == len(pages_content) and len(content.split()) < 30:
+                logger.info(f"Skipping page {page_num}: likely conclusion page")
+                continue
+
+            filtered_pages.append(page_data)
+
+        if not filtered_pages:
+            raise HTTPException(
+                status_code=400,
+                detail="No meaningful content pages found in PDF. All pages appear to be introductory, conclusion, or reference pages.",
+            )
+
+        # Create system message for PDF explanation
+        explanation_system_message = """You are an expert medical educator explaining content to Egyptian students.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 EXPLANATION REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. LANGUAGE: Explain in Egyptian Arabic dialect only (اللغة المصرية العامية)
+2. MEDICAL TERMS: Keep all medical and scientific terms in English as they are, and BOLD them with **asterisks**
+   ✓ Examples: "**diabetes**", "**hypertension**", "**myocardial infarction**", "**electrocardiogram**"
+   ✓ Do NOT translate these terms - keep them in English and bold them
+   ✓ Bold ALL medical/scientific terms: "**monosaccharides**", "**homeostasis**", "**glucose**", etc.
+
+3. CLARITY: Use simple, clear Egyptian Arabic that students understand
+4. STRUCTURE: Explain concepts step by step with logical flow
+5. EXAMPLES: Include practical examples when relevant
+6. CONNECTIONS: Show how concepts relate to each other
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 EGYPTIAN ARABIC STYLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use natural Egyptian Arabic like:
+✓ "يعني" (means)
+✓ "مثلاً" (for example)
+✓ "المهم" (important)
+✓ "لو عايز تفهم" (if you want to understand)
+✓ "المشكلة إن" (the problem is)
+✓ "السبب" (the reason)
+
+⚠️ IMPORTANT: Start directly with the explanation content. DO NOT use conversational openers like:
+- "طيب يا جماعة" (Okay guys)
+- "هاشرحلكم" (Let me explain to you)
+- "في الصفحة دي" (In this page)
+- "محتوى الصفحة" (Page content)
+- Any phrases that reference "the page" or introduce the explanation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📤 OUTPUT FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return ONLY the explanation text in Egyptian Arabic. Do NOT include JSON formatting, code blocks, or any markup. Just write the explanation as plain text. Start directly with the educational content explanation."""
+
+        # Process each filtered page
+        explained_pages = []
+
+        for page_data in filtered_pages:
+            page_num = page_data["page_number"]
+            content = page_data["content"]
+
+            # Truncate content if too long for context window
+            max_content_length = 4000
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "\n\n[Content truncated...]"
+
+            # Build explanation prompt
+            examples_instruction = (
+                " وخلي الشرح يشمل أمثلة عملية" if include_examples else ""
+            )
+            detail_instruction = (
+                " شرح مفصل وواضح" if detailed_explanation else "شرح مختصر"
+            )
+
+            prompt = f"""{detail_instruction} لمحتوى الصفحة رقم {page_num} دي بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 محتوى الصفحة رقم {page_num}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+شرح كل حاجة في الصفحة دي بالعربية المصرية، ولو في أمثلة أو تفسيرات أو شرح للمفاهيم.
+
+المطلوب: شرح واضح ومفيد للطلاب المصريين."""
+
+            try:
+                response_text = await self.generate_completion(
+                    prompt=prompt,
+                    system_message=explanation_system_message,
+                    temperature=0.7,
+                    max_tokens=3000,  # Allow longer responses for explanations
+                )
+
+                explained_pages.append(
+                    {"page_number": page_num, "explanation": response_text.strip()}
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to explain page {page_num}: {str(e)}")
+                # Add placeholder explanation if AI fails
+                explained_pages.append(
+                    {
+                        "page_number": page_num,
+                        "explanation": f"معلش، مفيش شرح متاح للصفحة رقم {page_num} دلوقتي",
+                    }
+                )
+
+        # Reset file pointer
+        file.seek(0)
+
+        return {
+            "pages": explained_pages,
+            "total_pages": len(explained_pages),
+            "filtered_pages": len(pages_content) - len(filtered_pages),
+            "language": "Egyptian Arabic",
+            "medical_terms_preserved": True,
+        }
+
+    async def explain_topic_content(
+        self,
+        topic: str,
+        include_examples: bool = True,
+        detailed_explanation: bool = True,
+        subject_breakdown: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Explain a medical topic comprehensively in Egyptian Arabic, organized by subjects
+
+        Args:
+            topic: The medical topic to explain
+            include_examples: Whether to include examples in explanations
+            detailed_explanation: Whether to provide detailed explanations
+            subject_breakdown: Whether to break down into sub-subjects
+
+        Returns:
+            Dictionary with topic explanations organized by subjects
+        """
+        # Create system message for topic explanation
+        explanation_system_message = """You are an expert medical educator explaining topics to Egyptian students.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 EXPLANATION REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. LANGUAGE: Explain in Egyptian Arabic dialect only (اللغة المصرية العامية)
+2. MEDICAL TERMS: Keep all medical and scientific terms in English as they are, and BOLD them with **asterisks**
+   ✓ Examples: "**diabetes**", "**hypertension**", "**myocardial infarction**", "**electrocardiogram**"
+   ✓ Do NOT translate these terms - keep them in English and bold them
+   ✓ Bold ALL medical/scientific terms: "**monosaccharides**", "**homeostasis**", "**glucose**", etc.
+
+3. STRUCTURE: Organize explanation by SUBJECTS/SUB-TOPICS, not by pages
+4. CLARITY: Use simple, clear Egyptian Arabic that students understand
+5. LOGICAL FLOW: Explain concepts step by step with smooth transitions
+6. EXAMPLES: Include practical examples when relevant
+7. CONNECTIONS: Show how concepts relate to each other
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 EGYPTIAN ARABIC STYLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use natural Egyptian Arabic like:
+✓ "يعني" (means)
+✓ "مثلاً" (for example)
+✓ "المهم" (important)
+✓ "لو عايز تفهم" (if you want to understand)
+✓ "المشكلة إن" (the problem is)
+✓ "السبب" (the reason)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📤 OUTPUT FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return ONLY a JSON object with this exact structure:
+{
+    "topic": "Main topic name",
+    "subjects": [
+        {
+            "subject_title": "First Subject Title",
+            "explanation": "Complete explanation of this subject in Egyptian Arabic"
+        },
+        {
+            "subject_title": "Second Subject Title",
+            "explanation": "Complete explanation of this subject in Egyptian Arabic"
+        }
+    ],
+    "language": "Egyptian Arabic",
+    "medical_terms_preserved": true
+}
+
+⚠️ IMPORTANT: 
+- Start directly with educational content - NO conversational openers
+- Break down the topic into logical SUBJECTS/SUB-TOPICS
+- Each subject should have a clear title and comprehensive explanation
+- Use **bold** for all medical terms
+- Return ONLY the JSON object, no additional text"""
+
+        # Build explanation prompt
+        examples_instruction = (
+            " وخلي الشرح يشمل أمثلة عملية كتير" if include_examples else ""
+        )
+        detail_instruction = (
+            " شرح مفصل وواضح وشامل" if detailed_explanation else "شرح مختصر"
+        )
+        breakdown_instruction = (
+            " وقسم الموضوع لأقسام فرعية منطقية" if subject_breakdown else ""
+        )
+
+        prompt = f"""{detail_instruction} للموضوع الطبي ده بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية مع وضع ** حوالين كل مصطلح{examples_instruction}{breakdown_instruction}:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 الموضوع: {topic}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+المطلوب: شرح شامل وواضح للموضوع ده، مقسم لأقسام فرعية منطقية كل قسم له عنوان وشرح كامل.
+
+الأقسام المطلوبة عادة:
+• التعريف والمفهوم الأساسي
+• الأسباب والعوامل المؤثرة
+• الأعراض والعلامات
+• التشخيص والفحوصات
+• العلاج والإدارة
+• المضاعفات والوقاية
+• أي أقسام أخرى مهمة متعلقة بالموضوع
+
+شرح كل قسم بالتفصيل بالعربية المصرية، واستخدم ** للتأكيد على المصطلحات الطبية."""
+
+        try:
+            response_text = await self.generate_completion(
+                prompt=prompt,
+                system_message=explanation_system_message,
+                temperature=0.7,
+                max_tokens=4000,  # Allow longer responses for comprehensive explanations
+            )
+
+            # Parse the JSON response
+            result = self._extract_json_from_response(response_text)
+
+            # Validate the structure
+            if not isinstance(result, dict) or "subjects" not in result:
+                raise HTTPException(
+                    status_code=500,
+                    detail="AI response format is invalid. Please try again.",
+                )
+
+            # Ensure medical_terms_preserved is set
+            result["medical_terms_preserved"] = True
+            result["language"] = "Egyptian Arabic"
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to explain topic {topic}: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate topic explanation: {str(e)}",
+            )
+
 
 # Create singleton instance
 ai_service = AIService()
