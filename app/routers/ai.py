@@ -237,7 +237,7 @@ async def admin_generate_questions(
     Args:
         topic: The subject/topic for questions
         difficulty: Question difficulty (easy, medium, hard)
-        count: Number of questions to generate (1-20 for admins)
+        count: Number of questions to generate (1-60 for admins)
         question_type: Type of questions
         notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
         previous_questions: Optional list of previously generated question texts to avoid duplicates
@@ -246,8 +246,8 @@ async def admin_generate_questions(
     Returns:
         Generated questions in JSON format with bilingual explanations
     """
-    if count < 1 or count > 20:
-        raise HTTPException(status_code=400, detail="Count must be between 1 and 20")
+    if count < 1 or count > 60:
+        raise HTTPException(status_code=400, detail="Count must be between 1 and 60")
 
     questions = await ai_service.generate_questions(
         topic=topic,
@@ -282,7 +282,7 @@ async def admin_generate_questions_from_pdf(
     Args:
         file: PDF file to extract content from
         difficulty: Question difficulty (easy, medium, hard)
-        count: Number of questions to generate (1-20 for admins)
+        count: Number of questions to generate (1-60 for admins)
         question_type: Type (multiple_choice, true_false, essay, mixed)
         notes: Optional custom instructions (e.g., "Focus on practical applications", "Avoid topic X", "Include real-world examples")
         previous_questions: Optional list of previously generated question texts to avoid duplicates
@@ -291,8 +291,8 @@ async def admin_generate_questions_from_pdf(
     Returns:
         Generated questions based on PDF content with bilingual explanations
     """
-    if count < 1 or count > 20:
-        raise HTTPException(status_code=400, detail="Count must be between 1 and 20")
+    if count < 1 or count > 60:
+        raise HTTPException(status_code=400, detail="Count must be between 1 and 60")
 
     if difficulty not in ["easy", "medium", "hard"]:
         raise HTTPException(

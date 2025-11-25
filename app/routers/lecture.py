@@ -827,7 +827,7 @@ async def generate_quiz_from_pdf(
     lecture_id: int = Query(..., description="Lecture ID to associate quiz with"),
     file: UploadFile = File(..., description="PDF file to generate questions from"),
     difficulty: str = Query("medium", pattern="^(easy|medium|hard)$"),
-    count: int = Query(5, ge=1, le=20),
+    count: int = Query(5, ge=1, le=60),
     notes: Optional[str] = Query(
         None, description="Custom instructions for question generation"
     ),
@@ -933,7 +933,7 @@ async def generate_more_questions_from_source(
     source_id: int,
     lecture_id: int = Query(..., description="Lecture ID to associate quiz with"),
     difficulty: str = Query("medium", pattern="^(easy|medium|hard)$"),
-    count: int = Query(5, ge=1, le=20),
+    count: int = Query(5, ge=1, le=60),
     notes: Optional[str] = Query(
         None, description="Custom instructions for question generation"
     ),
