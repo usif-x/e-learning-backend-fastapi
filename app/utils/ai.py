@@ -50,6 +50,7 @@ ENHANCED_SYSTEM_MESSAGE = """You are an elite educational assessment designer wi
    • Return ONLY valid JSON
    • NO markdown formatting (no ```json```)
    • NO additional text or explanations outside JSON
+   • For explanation_ar fields: Keep medical terms in English and explain in Egyptian Arabic for better understanding
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 QUESTION TYPE DEFINITIONS
@@ -503,7 +504,7 @@ OUTPUT FORMAT (JSON ONLY):
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correct_answer": 0,
             "explanation_en": "Detailed explanation of why the answer is correct (English)",
-            "explanation_ar": "شرح تفصيلي لماذا الإجابة صحيحة (Egyptian Arabic dialect)",
+            "explanation_ar": "شرح تفصيلي لماذا الإجابة صحيحة (Egyptian Arabic dialect) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -549,7 +550,7 @@ OUTPUT FORMAT (JSON ONLY):
             "options": ["True", "False"],
             "correct_answer": 0,
             "explanation_en": "Why this is true/false with supporting details (English)",
-            "explanation_ar": "لماذا هذا صحيح/خطأ مع التفاصيل الداعمة (Egyptian Arabic)",
+            "explanation_ar": "لماذا هذا صحيح/خطأ مع التفاصيل الداعمة (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -637,7 +638,7 @@ OUTPUT FORMAT (JSON ONLY):
             "options": ["A", "B", "C", "D"],
             "correct_answer": 0,
             "explanation_en": "Detailed explanation (English)",
-            "explanation_ar": "شرح تفصيلي (Egyptian Arabic)",
+            "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -1000,7 +1001,7 @@ OUTPUT FORMAT (JSON ONLY):
             "options": ["True", "False"],
             "correct_answer": 0,
             "explanation_en": "Evidence from text (English)",
-            "explanation_ar": "الدليل من النص (Egyptian Arabic)",
+            "explanation_ar": "الدليل من النص (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -1158,7 +1159,7 @@ Format as JSON:
             "options": ["True", "False"],
             "correct_answer": 0,
             "explanation_en": "Explanation (English)",
-            "explanation_ar": "شرح (Egyptian Arabic)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -1182,7 +1183,7 @@ Format as JSON:
             "options": ["Option A", "Option B", "Option C", "Option D"], 
             "correct_answer": 0,
             "explanation_en": "Explanation (English)",
-            "explanation_ar": "شرح (Egyptian Arabic)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
@@ -1206,7 +1207,7 @@ Format as JSON:
             "options": ["A", "B", "C", "D"],
             "correct_answer": 0,
             "explanation_en": "Explanation (English)",
-            "explanation_ar": "شرح (Egyptian Arabic)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
         }}
