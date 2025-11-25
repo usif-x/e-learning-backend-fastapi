@@ -11,7 +11,7 @@ class GenerateUserQuestionsRequest(BaseModel):
     """Request to generate questions from topic"""
 
     topic: str = Field(
-        ..., min_length=3, max_length=500, description="Topic for questions"
+        ..., min_length=3, max_length=30000, description="Topic for questions"
     )
     title: str = Field(
         ..., min_length=3, max_length=255, description="Title for question set"
@@ -22,7 +22,7 @@ class GenerateUserQuestionsRequest(BaseModel):
         default="multiple_choice",
         pattern="^(multiple_choice|true_false|essay|mixed)$",
     )
-    count: int = Field(default=5, ge=1, le=50, description="Number of questions")
+    count: int = Field(default=5, ge=1, le=20, description="Number of questions")
     is_public: bool = Field(
         default=False, description="Make questions public for others"
     )
@@ -48,7 +48,7 @@ class AddMoreQuestionsRequest(BaseModel):
     """Request to add more questions to existing set"""
 
     count: int = Field(
-        default=5, ge=1, le=50, description="Number of additional questions"
+        default=5, ge=1, le=20, description="Number of additional questions"
     )
     notes: Optional[str] = Field(None, description="Additional instructions for AI")
 

@@ -114,7 +114,7 @@ async def generate_questions_from_pdf(
     description: Optional[str] = Form(None),
     difficulty: str = Form("medium"),
     question_type: str = Form("multiple_choice"),
-    count: int = Form(5, ge=1, le=50),
+    count: int = Form(5, ge=1, le=20),
     is_public: bool = Form(False),
     notes: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
