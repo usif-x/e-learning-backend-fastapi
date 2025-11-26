@@ -13,6 +13,8 @@ from app.core.dependencies import get_current_user
 from app.core.security import jwt_manager  # Updated import
 from app.models.user import User
 from app.schemas.auth import (
+    AcademicLoginRequest,
+    AcademicRegistrationRequest,
     AdminAuthResponse,
     AdminLoginRequest,
     AuthFlowStatus,
@@ -134,6 +136,22 @@ async def verify_telegram_debug(
         ),
         "match": calculated_hash == received_hash,
     }
+
+
+@router.post("/academic/register", response_model=AuthResponse)
+async def academic_register(
+    request: AcademicRegistrationRequest, db: Session = Depends(get_db)
+) -> AuthResponse:
+    """Register new user with academic ID and password (no telegram required)"""
+    return auth_service.academic_register(request, db)
+
+
+@router.post("/academic/login", response_model=AuthResponse)
+async def academic_login(
+    request: AcademicLoginRequest, db: Session = Depends(get_db)
+) -> AuthResponse:
+    """Login with academic ID and password"""
+    return auth_service.academic_login(request, db)
 
 
 # ==================== ADMIN AUTHENTICATION ====================

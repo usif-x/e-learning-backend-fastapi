@@ -14,27 +14,7 @@ depends_on = None
 
 
 def upgrade():
-    # Add question_category column
-    op.add_column(
-        "user_generated_questions",
-        sa.Column(
-            "question_category",
-            sa.String(50),
-            nullable=True,
-            comment="Primary question category: standard, critical, linking",
-        ),
-    )
-
-    # Add cognitive_level column
-    op.add_column(
-        "user_generated_questions",
-        sa.Column(
-            "cognitive_level",
-            sa.String(50),
-            nullable=True,
-            comment="Cognitive level: remember, understand, apply, analyze, evaluate, create",
-        ),
-    )
+    pass
 
 
 def downgrade():

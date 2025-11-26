@@ -19,7 +19,7 @@ class UserGeneratedQuestion(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    topic = Column(String(500), nullable=False)
+    topic = Column(Text, nullable=False)
 
     # Question settings
     difficulty = Column(

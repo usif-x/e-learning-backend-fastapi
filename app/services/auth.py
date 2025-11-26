@@ -19,6 +19,8 @@ from app.core.security import jwt_manager, token_blacklist
 from app.models.admin import Admin
 from app.models.user import User
 from app.schemas.auth import (
+    AcademicLoginRequest,
+    AcademicRegistrationRequest,
     AdminAuthResponse,
     AdminLoginRequest,
     AdminResponse,
@@ -816,6 +818,8 @@ class AuthService:
             methods.append("phone")
         if user.telegram_id:
             methods.append("telegram")
+        if user.academic_id and user.hashed_password:
+            methods.append("academic")
         return methods
 
     def _user_to_response(self, user: User) -> UserResponse:
@@ -831,6 +835,7 @@ class AuthService:
             is_active=user.is_active,
             is_verified=user.is_verified,
             status=user.status,
+            academic_id=user.academic_id,
             wallet_balance=user.wallet_balance,
             telegram_id=user.telegram_id,
             telegram_username=user.telegram_username,
@@ -843,6 +848,147 @@ class AuthService:
             identifier=user.identifier,
             login_methods=self._get_user_login_methods(user),
         )
+
+    def academic_register(
+        self, request: AcademicRegistrationRequest, db: Session
+    ) -> AuthResponse:
+        """
+        Register new user with academic ID (no telegram required)
+        """
+        try:
+            # Check if academic_id already exists
+            existing_user = (
+                db.query(User).filter(User.academic_id == request.academic_id).first()
+            )
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Academic ID already exists",
+                )
+
+            # Hash password
+            hashed_password = self.password_helper.hash_password(request.password)
+
+            # Create new user with minimal data
+            new_user = User(
+                academic_id=request.academic_id,
+                hashed_password=hashed_password,
+                full_name=request.full_name,
+                is_active=True,
+                is_verified=True,  # Academic users are auto-verified
+                status=request.role or settings.authorization_default_role,
+                # Set dummy telegram data since it's required by the model
+                telegram_id=f"academic_{request.academic_id}",
+                telegram_first_name=(
+                    request.full_name.split()[0]
+                    if request.full_name.split()
+                    else request.full_name
+                ),
+                telegram_last_name=(
+                    " ".join(request.full_name.split()[1:])
+                    if len(request.full_name.split()) > 1
+                    else None
+                ),
+                telegram_verified=False,  # Not using telegram
+            )
+
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+
+            # Generate tokens
+            access_token, refresh_token = jwt_manager.create_token_pair(new_user)
+            new_user.last_login = datetime.utcnow()
+            db.commit()
+
+            logger.info(
+                f"Academic user registered successfully: {new_user.academic_id}"
+            )
+
+            return AuthResponse(
+                success=True,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                expires_in=int(
+                    timedelta(minutes=settings.jwt_user_expiration).total_seconds()
+                ),
+                user=self._user_to_response(new_user),
+                message="Academic user registered and logged in successfully.",
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Academic registration error: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Academic registration failed",
+            )
+
+    def academic_login(
+        self, request: AcademicLoginRequest, db: Session
+    ) -> AuthResponse:
+        """
+        Login user with academic ID and password
+        """
+        try:
+            # Find user by academic_id
+            user = (
+                db.query(User).filter(User.academic_id == request.academic_id).first()
+            )
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid academic ID or password",
+                )
+
+            # Verify password
+            if not user.hashed_password or not self.password_helper.check_password(
+                request.password, user.hashed_password
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid academic ID or password",
+                )
+
+            if not user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Account is deactivated",
+                )
+
+            # Generate tokens
+            access_token, refresh_token = jwt_manager.create_token_pair(
+                user, remember_me=request.remember_me
+            )
+
+            # Update last login
+            user.last_login = datetime.utcnow()
+            db.commit()
+
+            logger.info(f"Academic login successful: {user.academic_id}")
+
+            return AuthResponse(
+                success=True,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="bearer",
+                expires_in=int(
+                    timedelta(minutes=settings.jwt_user_expiration).total_seconds()
+                ),
+                user=self._user_to_response(user),
+                message="Academic login successful",
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Academic login error: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Academic login failed",
+            )
 
     def admin_login(self, request: AdminLoginRequest, db: Session) -> AdminAuthResponse:
         """

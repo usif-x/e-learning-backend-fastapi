@@ -18,6 +18,9 @@ class User(Base):
     hashed_password = Column(
         String(255), nullable=True
     )  # Optional for phone-only users
+    academic_id = Column(
+        String(50), unique=True, index=True, nullable=True
+    )  # For academic registration/login
 
     # Profile information (from Telegram + optional)
     full_name = Column(
