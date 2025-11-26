@@ -876,7 +876,7 @@ class AuthService:
                 full_name=request.full_name,
                 is_active=True,
                 is_verified=True,  # Academic users are auto-verified
-                status=request.role or settings.authorization_default_role,
+                status=settings.authorization_default_role,
                 # Set dummy telegram data since it's required by the model
                 telegram_id=f"academic_{request.academic_id}",
                 telegram_first_name=(

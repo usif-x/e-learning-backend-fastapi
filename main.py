@@ -181,12 +181,19 @@ async def db_exception_handler(request: Request, exc: DBException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.warning(f"Validation error: {exc.errors()}")
+    # Serialize errors to make them JSON serializable
+    details = []
+    for error in exc.errors():
+        if isinstance(error, dict):
+            details.append(error)
+        else:
+            details.append({"error": str(error)})
     return JSONResponse(
         status_code=422,
         content={
             "error": "Validation error",
-            "details": exc.errors(),
-            "body": exc.body,
+            "details": details,
+            "body": str(exc.body),
         },
     )
 

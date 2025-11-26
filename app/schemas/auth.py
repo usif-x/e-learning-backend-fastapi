@@ -242,45 +242,13 @@ class DirectLoginRequest(BaseModel):
 class AcademicRegistrationRequest(BaseModel):
     """Academic registration with academic ID"""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     full_name: str = Field(..., min_length=2, max_length=100, description="Full name")
     academic_id: str = Field(
         ..., min_length=3, max_length=50, description="Academic ID"
     )
     password: str = Field(..., min_length=4, max_length=100, description="Password")
-    confirm_password: str = Field(..., description="Password confirmation")
-    role: Optional[str] = Field(
-        default=settings.authorization_default_role,
-        description="User role",
-        pattern=f"^({'|'.join(settings.authorization_roles)})$",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_academic_registration(cls, values):
-        if isinstance(values, dict):
-            password = values.get("password")
-            confirm_password = values.get("confirm_password")
-
-            # Password confirmation
-            if password != confirm_password:
-                raise ValueError("Passwords do not match")
-
-            # Password strength validation
-            if len(password) < 8:
-                raise ValueError("Password must be at least 8 characters long")
-
-            if not re.search(r"[A-Z]", password):
-                raise ValueError("Password must contain at least one uppercase letter")
-            if not re.search(r"[a-z]", password):
-                raise ValueError("Password must contain at least one lowercase letter")
-            if not re.search(r"\d", password):
-                raise ValueError("Password must contain at least one digit")
-            if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-                raise ValueError("Password must contain at least one special character")
-
-        return values
 
 
 class AcademicLoginRequest(BaseModel):
