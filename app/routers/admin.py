@@ -316,7 +316,7 @@ async def delete_admin(
 )
 async def reset_admin_password(
     admin_id: int,
-    new_password: str = Query(..., min_length=8, description="New password"),
+    new_password: str = Query(..., min_length=4, description="New password"),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(require_admin_level(999)),
 ):

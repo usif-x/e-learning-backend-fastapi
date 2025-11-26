@@ -93,7 +93,7 @@ class UserRegistrationRequest(BaseModel):
     full_name: Optional[str] = Field(None, description="Override telegram display name")
     email: Optional[EmailStr] = Field(None, description="Email address")
     phone_number: Optional[str] = Field(None, description="Phone number")
-    password: Optional[str] = Field(None, min_length=8, max_length=100)
+    password: Optional[str] = Field(None, min_length=4, max_length=100)
     confirm_password: Optional[str] = Field(None, description="Password confirmation")
     parent_phone_number: Optional[str] = Field(None, max_length=20)
     role: Optional[str] = Field(
@@ -248,7 +248,7 @@ class AcademicRegistrationRequest(BaseModel):
     academic_id: str = Field(
         ..., min_length=3, max_length=50, description="Academic ID"
     )
-    password: str = Field(..., min_length=8, max_length=100, description="Password")
+    password: str = Field(..., min_length=4, max_length=100, description="Password")
     confirm_password: str = Field(..., description="Password confirmation")
     role: Optional[str] = Field(
         default=settings.authorization_default_role,
@@ -415,7 +415,7 @@ class SetPasswordRequest(BaseModel):
 
     current_telegram_hash: str = Field(..., description="Current telegram verification")
     email: EmailStr = Field(..., description="Email to associate with password")
-    new_password: str = Field(..., min_length=8, max_length=100)
+    new_password: str = Field(..., min_length=4, max_length=100)
     confirm_password: str = Field(..., description="Password confirmation")
 
     @field_validator("confirm_password")
@@ -432,7 +432,7 @@ class PasswordUpdateRequest(BaseModel):
     """Update password for users who already have one"""
 
     current_password: str = Field(..., description="Current password")
-    new_password: str = Field(..., min_length=8, max_length=100)
+    new_password: str = Field(..., min_length=4, max_length=100)
     confirm_password: str = Field(..., description="Password confirmation")
 
     @field_validator("confirm_password")
