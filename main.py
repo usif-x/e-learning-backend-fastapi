@@ -7,6 +7,8 @@ from pathlib import Path
 
 import click
 import uvicorn
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -274,6 +276,15 @@ def cli():
     pass
 
 
+def run_migrations():
+    try:
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        print("Migrations completed successfully")
+    except Exception as e:
+        print(f"Migration failed: {e}")
+
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="Host to bind the server to")
 @click.option("--port", default=8000, help="Port to run the server on")
@@ -333,6 +344,7 @@ def prod(host: str, port: int, workers: int):
 
     try:
         subprocess.run(cmd, check=True)
+        run_migrations()
     except subprocess.CalledProcessError as e:
         logger.error(f"Gunicorn failed to start: {e}")
         raise click.ClickException(str(e))
