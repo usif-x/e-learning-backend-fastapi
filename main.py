@@ -312,6 +312,11 @@ def dev(host: str, port: int, reload: bool):
 @click.option("--workers", default=4, help="Number of worker processes")
 def prod(host: str, port: int, workers: int):
     """Run production server with Gunicorn."""
+
+    # 1. RUN MIGRATIONS FIRST
+    logger.info("Running database migrations...")
+    run_migrations()
+
     logger.info("Starting production server with Gunicorn...")
     logger.info(f"  - Host: {host}")
     logger.info(f"  - Port: {port}")
@@ -343,8 +348,8 @@ def prod(host: str, port: int, workers: int):
     ]
 
     try:
+        # 2. START SERVER (This blocks until the app stops)
         subprocess.run(cmd, check=True)
-        run_migrations()
     except subprocess.CalledProcessError as e:
         logger.error(f"Gunicorn failed to start: {e}")
         raise click.ClickException(str(e))
