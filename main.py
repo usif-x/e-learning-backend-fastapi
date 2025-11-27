@@ -32,16 +32,16 @@ from app.routers import routes
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
 
-# Configure storage directory from settings
-if Path(settings.upload_dir).is_absolute():
-    STORAGE_DIR = Path(settings.upload_dir)
-else:
-    STORAGE_DIR = BASE_DIR / settings.upload_dir
 
-# Create directories with proper permissions
+BASE_DIR = Path(__file__).parent
+STORAGE_DIR = Path(settings.upload_dir)  # Must match the mounted volume
+
+# Create logs and storage folders if not exist
 for directory in [LOGS_DIR, STORAGE_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+    if not directory.exists():
+        directory.mkdir(parents=True, exist_ok=True)
     os.chmod(directory, 0o755)
+
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ from .lecture import router as lecture_router
 from .quiz_source import router as quiz_source_router
 from .user import router as user_router
 from .user_generated_question import router as user_generated_question_router
+from .analytics import router as analytics_router
 
 routes = [
     admin_router,
@@ -20,4 +21,5 @@ routes = [
     ai_router,
     user_generated_question_router,
     quiz_source_router,
+    analytics_router,
 ]
