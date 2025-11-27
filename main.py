@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.encoders import jsonable_encoder
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -30,7 +31,12 @@ from app.routers import routes
 # ============================================================================
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
-STORAGE_DIR = BASE_DIR / "storage"
+
+# Configure storage directory from settings
+if Path(settings.upload_dir).is_absolute():
+    STORAGE_DIR = Path(settings.upload_dir)
+else:
+    STORAGE_DIR = BASE_DIR / settings.upload_dir
 
 # Create directories with proper permissions
 for directory in [LOGS_DIR, STORAGE_DIR]:

@@ -7,6 +7,8 @@ from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile
 
+from app.core.config import settings
+
 # Allowed file extensions
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".webm"}
@@ -17,14 +19,27 @@ MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB
 class FileUploadService:
     """Service to handle file uploads with UUID naming and storage management."""
 
-    def __init__(self, base_storage_path: str = "storage"):
+    def __init__(self, base_storage_path: Optional[str] = None):
         """
         Initialize the file upload service.
 
         Args:
             base_storage_path: Base directory for file storage (relative to project root)
         """
-        self.base_storage_path = Path(base_storage_path)
+        if base_storage_path:
+            self.base_storage_path = Path(base_storage_path)
+        elif Path(settings.upload_dir).is_absolute():
+            self.base_storage_path = Path(settings.upload_dir)
+        else:
+            # Relative to project root (where main.py is likely running, or current working dir)
+            # Better to use absolute path relative to this file to be safe, but adhering to existing pattern
+            # The existing pattern seemed to rely on CWD. Let's make it robust relative to project root if possible
+            # or just trust the relative path if that's what was intended.
+            # Given main.py logic: BASE_DIR = Path(__file__).parent
+            # Let's try to match that if we can, but we don't have BASE_DIR here easily without circular imports or redefining.
+            # For now, let's stick to the relative path behavior but use the setting.
+            self.base_storage_path = Path(settings.upload_dir)
+
         self._ensure_storage_directories()
 
     def _ensure_storage_directories(self):
