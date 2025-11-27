@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # File Uploads
     max_upload_size_mb: int = Field(default=20)
-    upload_dir: str = Field(default="storage")
+    upload_dir: str = Field(default="/storage")
     allowed_file_types: Union[str, List[str]] = Field(
         default=["jpg", "png", "pdf", "mp4", "mp3"]
     )
