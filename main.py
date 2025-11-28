@@ -10,11 +10,11 @@ import uvicorn
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.encoders import jsonable_encoder
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,6 +23,7 @@ from app.core.database import Base, SessionLocal, engine
 from app.core.decorator import DBException
 from app.core.init import initialize_application
 from app.core.limiter import custom_rate_limit_exceeded_handler, limiter
+from app.core.schedular import shutdown_scheduler, start_scheduler
 from app.models import *
 from app.routers import routes
 
@@ -32,6 +33,7 @@ from app.routers import routes
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
 
+scheduler = None
 
 BASE_DIR = Path(__file__).parent
 STORAGE_DIR = Path(settings.upload_dir)  # Must match the mounted volume
@@ -41,7 +43,6 @@ for directory in [LOGS_DIR, STORAGE_DIR]:
     if not directory.exists():
         directory.mkdir(parents=True, exist_ok=True)
     os.chmod(directory, 0o755)
-
 
 
 # ============================================================================
@@ -84,6 +85,8 @@ logger = setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application startup and shutdown."""
+    global scheduler
+
     logger.info("=" * 80)
     logger.info("Starting application...")
     logger.info("=" * 80)
@@ -98,7 +101,7 @@ async def lifespan(app: FastAPI):
         # Initialize application data
         db = SessionLocal()
         try:
-            initialize_application(db)
+            # initialize_application(db)  # Your existing initialization
             logger.info("✓ Application initialized successfully")
         finally:
             db.close()
@@ -108,6 +111,11 @@ async def lifespan(app: FastAPI):
         logger.info(f"  - Exists: {STORAGE_DIR.exists()}")
         logger.info(f"  - Writable: {os.access(STORAGE_DIR, os.W_OK)}")
         logger.info(f"  - Contents: {len(list(STORAGE_DIR.iterdir()))} items")
+
+        # Start usage tracking scheduler
+        logger.info("Starting usage tracking scheduler...")
+        scheduler = start_scheduler()
+        logger.info("✓ Usage tracking scheduler started successfully")
 
         logger.info("✓ Application startup completed successfully")
 
@@ -121,6 +129,13 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info("Shutting down application...")
     logger.info("=" * 80)
+
+    # Stop usage tracking scheduler
+    if scheduler:
+        logger.info("Stopping usage tracking scheduler...")
+        shutdown_scheduler(scheduler)
+        logger.info("✓ Usage tracking scheduler stopped")
+
     logger.info("✓ Application shutdown completed")
 
 

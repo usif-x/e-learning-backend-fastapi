@@ -12,6 +12,7 @@ from .course import Course
 from .course_enrollment import CourseEnrollment
 from .lecture import Lecture
 from .lecture_content import LectureContent
+from .notification import Notification
 from .post import Post
 from .post_media import PostMedia
 from .post_reaction import PostReaction
@@ -23,6 +24,7 @@ from .quiz_source import QuizSource
 from .relations import setup_relationships
 from .reported_post import ReportedPost
 from .user import User
+from .user_daily_usage import UserDailyUsage
 from .user_generated_question import UserGeneratedQuestion
 
 # Setup all relationships after models are imported
@@ -48,4 +50,5 @@ __all__ = [
     "User",
     "UserGeneratedQuestion",
     "QuizSource",
+    "Notification",
 ]
