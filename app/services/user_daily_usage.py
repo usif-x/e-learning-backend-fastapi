@@ -57,34 +57,58 @@ class UsageService:
 
     @staticmethod
     def ping_activity(db: Session, user_id: int) -> tuple[UserDailyUsage, int]:
+        """
+        Update user activity.
+        If the gap between pings is > 5 minutes, it ignores the gap time (assumes user was away).
+        """
         today = date.today()
         now = get_utc_now()
 
-        # نحدد أقصى مدة للغياب (مثلاً 5 دقائق)
+        # Threshold to detect if user closed the browser/tab
         MAX_IDLE_MINUTES = 5
 
-        usage = db.query(UserDailyUsage).filter(...).first()
+        # --- FIX IS HERE: Use the actual filter, not (...) ---
+        usage = (
+            db.query(UserDailyUsage)
+            .filter(
+                and_(UserDailyUsage.user_id == user_id, UserDailyUsage.date == today)
+            )
+            .first()
+        )
+        # -----------------------------------------------------
 
         minutes_added = 0
 
         if usage and usage.last_ping:
+            # Ensure datetime is timezone-aware
             last_ping_aware = make_aware(usage.last_ping)
+
+            # Calculate difference
             time_diff = now - last_ping_aware
             diff_minutes = time_diff.total_seconds() / 60
 
             if diff_minutes > MAX_IDLE_MINUTES:
+                # Gap was too long (e.g., 3 hours).
+                # User likely closed the site and came back.
+                # Do NOT add these minutes. Just reset the timer.
                 minutes_added = 0
             else:
+                # User is active. Add the time.
                 minutes_added = int(diff_minutes)
+                # Cap at 5 minutes just in case of weird edge cases
+                minutes_added = min(minutes_added, 5)
 
+            # Update record
             usage.minutes_spent += minutes_added
             usage.last_ping = now
             usage.updated_at = now
 
         elif usage:
+            # Record exists but no last_ping (shouldn't happen often)
             usage.last_ping = now
             usage.updated_at = now
         else:
+            # No record exists for today - create one
             usage = UserDailyUsage(
                 user_id=user_id, date=today, minutes_spent=0, last_ping=now
             )
