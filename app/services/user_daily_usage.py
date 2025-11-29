@@ -58,8 +58,9 @@ class UsageService:
     @staticmethod
     def ping_activity(db: Session, user_id: int) -> tuple[UserDailyUsage, int]:
         """
-        Update user activity.
-        If the gap between pings is > 5 minutes, it ignores the gap time (assumes user was away).
+        Update user activity with multi-tab deduplication.
+        Frontend sends pings every 70 seconds.
+        Ignores pings that come within 35 seconds of the last ping (handles multi-tab).
         """
         today = date.today()
         now = get_utc_now()
@@ -67,7 +68,10 @@ class UsageService:
         # Threshold to detect if user closed the browser/tab
         MAX_IDLE_MINUTES = 5
 
-        # --- FIX IS HERE: Use the actual filter, not (...) ---
+        # Deduplication window: ignore pings closer than 60 seconds
+        # Frontend sends every 70s, so any ping < 60s apart is from another tab
+        MIN_PING_INTERVAL_SECONDS = 60
+
         usage = (
             db.query(UserDailyUsage)
             .filter(
@@ -75,7 +79,6 @@ class UsageService:
             )
             .first()
         )
-        # -----------------------------------------------------
 
         minutes_added = 0
 
@@ -85,7 +88,14 @@ class UsageService:
 
             # Calculate difference
             time_diff = now - last_ping_aware
-            diff_minutes = time_diff.total_seconds() / 60
+            diff_seconds = time_diff.total_seconds()
+            diff_minutes = diff_seconds / 60
+
+            # DEDUPLICATION: Ignore if ping came too soon (likely from another tab)
+            if diff_seconds < MIN_PING_INTERVAL_SECONDS:
+                # Don't update anything, just return current state
+                db.commit()
+                return usage, 0
 
             if diff_minutes > MAX_IDLE_MINUTES:
                 # Gap was too long (e.g., 3 hours).
