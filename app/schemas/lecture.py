@@ -276,7 +276,7 @@ class GenerateQuizRequest(BaseModel):
 
     lecture_id: int = Field(..., description="Lecture ID to associate quiz with")
     topic: str = Field(
-        ..., min_length=3, max_length=500, description="Topic for quiz questions"
+        ..., min_length=3, max_length=50000, description="Topic for quiz questions"
     )
     difficulty: str = Field(
         default="medium",
