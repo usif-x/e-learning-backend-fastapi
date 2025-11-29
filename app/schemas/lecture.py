@@ -275,16 +275,14 @@ class GenerateQuizRequest(BaseModel):
     """Request to generate quiz questions using AI"""
 
     lecture_id: int = Field(..., description="Lecture ID to associate quiz with")
-    topic: str = Field(
-        ..., min_length=3, max_length=50000, description="Topic for quiz questions"
-    )
+    topic: str = Field(..., min_length=3, description="Topic for quiz questions")
     difficulty: str = Field(
         default="medium",
         pattern="^(easy|medium|hard)$",
         description="Question difficulty level",
     )
     count: int = Field(
-        default=5, ge=1, le=20, description="Number of questions to generate"
+        default=5, ge=1, le=60, description="Number of questions to generate"
     )
     notes: Optional[str] = Field(
         None,
@@ -359,7 +357,7 @@ class PracticeQuizRequest(BaseModel):
         description="Specific quiz content IDs to generate questions from (optional)",
     )
     question_count: int = Field(
-        default=10, ge=1, le=50, description="Number of questions to include"
+        default=10, ge=1, le=60, description="Number of questions to include"
     )
     include_unanswered: bool = Field(
         default=True,
@@ -448,9 +446,9 @@ class GenerateQuizRequest(BaseModel):
     """Request schema for AI quiz generation"""
 
     lecture_id: int
-    topic: str = Field(..., min_length=1, max_length=50000)
+    topic: str = Field(..., min_length=1)
     difficulty: str = Field("medium", pattern="^(easy|medium|hard)$")
-    count: int = Field(5, ge=1, le=20)
+    count: int = Field(5, ge=1, le=60)
     notes: Optional[str] = Field(None, max_length=10000)
     previous_questions: Optional[List[str]] = None
 
