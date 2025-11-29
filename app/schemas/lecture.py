@@ -448,10 +448,10 @@ class GenerateQuizRequest(BaseModel):
     """Request schema for AI quiz generation"""
 
     lecture_id: int
-    topic: str = Field(..., min_length=1, max_length=200)
+    topic: str = Field(..., min_length=1)
     difficulty: str = Field("medium", pattern="^(easy|medium|hard)$")
     count: int = Field(5, ge=1, le=20)
-    notes: Optional[str] = Field(None, max_length=500)
+    notes: Optional[str] = Field(None, max_length=1000)
     previous_questions: Optional[List[str]] = None
 
 
