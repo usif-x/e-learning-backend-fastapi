@@ -5,6 +5,7 @@ from .auth import router as auth_router
 from .category import router as category_router
 from .community import router as community_router
 from .course import router as course_router
+from .generate_pdf_question_file import router as generate_pdf_question_file_router
 from .lecture import router as lecture_router
 from .notification import router as notification_router
 from .quiz_source import router as quiz_source_router
@@ -26,4 +27,5 @@ routes = [
     analytics_router,
     notification_router,
     user_daily_usage_router,
+    generate_pdf_question_file_router,
 ]
