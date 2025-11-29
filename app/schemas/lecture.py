@@ -451,7 +451,7 @@ class GenerateQuizRequest(BaseModel):
     topic: str = Field(..., min_length=1)
     difficulty: str = Field("medium", pattern="^(easy|medium|hard)$")
     count: int = Field(5, ge=1, le=20)
-    notes: Optional[str] = Field(None, max_length=1000)
+    notes: Optional[str] = Field(None, max_length=10000)
     previous_questions: Optional[List[str]] = None
 
 
