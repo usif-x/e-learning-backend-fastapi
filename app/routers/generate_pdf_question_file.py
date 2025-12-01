@@ -109,7 +109,6 @@ async def generate_exam(
         # Generate PDF
         output_path = save_questions_to_pdf(
             questions_data=questions_data,
-            title=exam_title,
             output_file=temp_output.name,
             include_answers=include_answers,
         )

@@ -1,14 +1,27 @@
 import json
 import os
+import random
 import re
 from typing import Dict, List, Literal
 
 import requests
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch, mm
+from reportlab.platypus import (
+    HRFlowable,
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 load_dotenv()
 
@@ -17,10 +30,9 @@ DEEPSEEK_MODEL = "deepseek-chat"
 
 
 # -------------------------
-# Extract text from PDF using PyPDF2
+# Extract text from PDF
 # -------------------------
 def extract_pdf_text(pdf_path: str) -> str:
-    """Extract text content from a PDF file."""
     try:
         reader = PdfReader(pdf_path)
         text = ""
@@ -34,29 +46,19 @@ def extract_pdf_text(pdf_path: str) -> str:
 
 
 # -------------------------
-# Extract JSON safely from AI output
+# Extract JSON safely
 # -------------------------
 def extract_json_from_response(raw_output: str) -> Dict:
-    """
-    Extract JSON from AI response that may contain markdown code blocks.
-    Handles formats like:
-    - ```json {...} ```
-    - ``` {...} ```
-    - Plain JSON {...}
-    """
-    # First, try to find JSON within markdown code blocks
     code_block_pattern = r"```(?:json)?\s*(\{.*?\})\s*```"
     code_block_match = re.search(code_block_pattern, raw_output, flags=re.DOTALL)
 
     if code_block_match:
         json_str = code_block_match.group(1)
     else:
-        # If no code block, try to find raw JSON
         json_match = re.search(r"\{.*\}", raw_output, flags=re.DOTALL)
         if not json_match:
             print("=" * 60)
-            print("RAW OUTPUT:")
-            print(raw_output)
+            print("RAW OUTPUT:", raw_output)
             print("=" * 60)
             raise ValueError("❌ No JSON object found in AI output")
         json_str = json_match.group(0)
@@ -64,15 +66,60 @@ def extract_json_from_response(raw_output: str) -> Dict:
     try:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
-        print("=" * 60)
-        print("FAILED TO PARSE JSON:")
-        print(json_str)
-        print("=" * 60)
         raise ValueError(f"❌ Invalid JSON format: {str(e)}")
 
 
 # -------------------------
-# Generate questions using DeepSeek API
+# Shuffle MCQ answers
+# -------------------------
+def shuffle_mcq_answers(questions_data: Dict) -> Dict:
+    for q in questions_data["questions"]:
+        if q["type"] == "mcq" and q["options"]:
+            correct_answer_text = q["answer"]
+            random.shuffle(q["options"])
+            try:
+                correct_index = q["options"].index(correct_answer_text)
+                q["answer"] = chr(65 + correct_index)
+            except ValueError:
+                for i, opt in enumerate(q["options"]):
+                    if correct_answer_text.lower() in opt.lower():
+                        q["answer"] = chr(65 + i)
+                        break
+                else:
+                    q["answer"] = "A"
+    return questions_data
+
+
+# -------------------------
+# Format text with emphasis
+# -------------------------
+def format_text_with_emphasis(text: str) -> str:
+    emphasis_keywords = [
+        "NOT",
+        "EXCEPT",
+        "ALWAYS",
+        "NEVER",
+        "ONLY",
+        "ALL",
+        "NONE",
+        "MUST",
+        "CANNOT",
+        "BEST",
+        "MOST",
+        "LEAST",
+    ]
+    formatted_text = text
+    for keyword in emphasis_keywords:
+        pattern = r"\b(" + re.escape(keyword) + r")\b"
+        replacement = r'<b><u><font color="#c62828">\1</font></u></b>'
+        formatted_text = re.sub(
+            pattern, replacement, formatted_text, flags=re.IGNORECASE
+        )
+    return formatted_text
+
+
+# -------------------------
+# Generate Questions (AI)
 # -------------------------
 def generate_questions(
     content: str,
@@ -80,68 +127,51 @@ def generate_questions(
     question_type: Literal["mcq", "true_false", "essay", "mixed"] = "mixed",
     difficulty: Literal["easy", "medium", "hard", "mixed"] = "mixed",
 ) -> Dict:
-    """
-    Generate exam questions using DeepSeek API.
-
-    Args:
-        content: Text content to generate questions from
-        num_questions: Number of questions to generate
-        question_type: Type of questions (mcq, true_false, essay, or mixed)
-        difficulty: Difficulty level (easy, medium, hard, or mixed)
-
-    Returns:
-        Dictionary containing generated questions
-    """
     if not DEEPSEEK_API_KEY:
-        raise ValueError("❌ AI_API_KEY not found in environment variables")
-
-    if not content.strip():
-        raise ValueError("❌ Content cannot be empty")
+        raise ValueError("❌ AI_API_KEY not found")
 
     url = "https://api.deepseek.com/v1/chat/completions"
 
-    system_prompt = """You are a professional exam question generator.
-Generate questions STRICTLY from the provided content.
+    system_prompt = """You are a professional academic examiner. Output ONLY valid JSON.
 
-YOU MUST OUTPUT ONLY VALID JSON - NO OTHER TEXT BEFORE OR AFTER.
-
-Format:
+JSON STRUCTURE:
 {
+  "title": "Exam Title",
   "questions": [
     {
-      "question": "Question text here",
-      "answer": "Correct answer here",
-      "type": "mcq",
+      "question": "Question text here?",
+      "answer": "Answer text here",
+      "type": "mcq", // or "true_false", "essay"
       "difficulty": "medium",
-      "options": ["Option 1", "Option 2", "Option 3", "Option 4"]
+      "options": ["Option A", "Option B", "Option C", "Option D"] // Empty [] for essay
     }
   ]
 }
 
 CRITICAL RULES:
-- You MUST generate EXACTLY the number of questions requested - no more, no less
-- MCQ: Provide 4-5 realistic options, include the correct answer among them
-- true_false: options must be exactly ["True", "False"]
-- essay: options should be empty array []
-- If type=mixed: randomly mix mcq, true_false, and essay questions
-- If difficulty=mixed: vary difficulty across easy, medium, and hard
-- Base ALL questions on the provided content only
-- Make questions clear, unambiguous, and pedagogically sound
-- You can ask questions from different angles, difficulty levels, and detail levels to reach the required count
-- Include questions about definitions, applications, comparisons, examples, and implications"""
+1. **SOURCE MATERIAL**: All questions must be strictly derived from the provided content.
+2. **FORMATTING**: Use keywords like NOT, EXCEPT, MOST, BEST where appropriate.
+3. **MCQ**: 4 distinct options. "answer" must match one option EXACTLY.
+4. **TRUE/FALSE**: Options must be ["True", "False"].
 
-    user_prompt = f"""Generate EXACTLY {num_questions} questions from this content. This is mandatory.
+**RULES FOR ESSAY QUESTIONS (STRICT):**
+- **CONCISE ANSWERS**: The 'answer' field for essays must be short and direct (Maximum 2-3 sentences).
+- **NO FLUFF**: Get straight to the point.
+- **Example**: "Mitochondria produce ATP through cellular respiration. They are known as the powerhouse of the cell."
+"""
 
-Content:
+    user_prompt = f"""Create an exam based on this content:
+---
 {content}
+---
 
 Requirements:
-- Number of questions: {num_questions} (MUST BE EXACT)
-- Question type: {question_type}
+- Count: EXACTLY {num_questions} questions.
+- Type: {question_type}
 - Difficulty: {difficulty}
-- Output ONLY the JSON object, nothing else
-
-Remember: You MUST generate exactly {num_questions} questions. Use different question styles and angles to meet this requirement."""
+- **Essay Answers**: Keep them very short (2-3 sentences max).
+- Return ONLY the JSON.
+"""
 
     payload = {
         "model": DEEPSEEK_MODEL,
@@ -149,8 +179,8 @@ Remember: You MUST generate exactly {num_questions} questions. Use different que
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.7,
-        "max_tokens": 8000,  # Increased for more questions
+        "temperature": 0.5,
+        "max_tokens": 8000,
     }
 
     headers = {
@@ -161,360 +191,349 @@ Remember: You MUST generate exactly {num_questions} questions. Use different que
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
-        response_json = response.json()
-
-        if "choices" not in response_json or not response_json["choices"]:
-            raise ValueError("❌ Invalid API response format")
-
-        raw_output = response_json["choices"][0]["message"]["content"]
+        raw_output = response.json()["choices"][0]["message"]["content"]
         result = extract_json_from_response(raw_output)
 
-        # Verify the number of questions generated
-        generated_count = len(result.get("questions", []))
-        if generated_count != num_questions:
-            print(
-                f"⚠️  Warning: Requested {num_questions} questions but got {generated_count}"
-            )
-            print(
-                f"💡 Tip: The content might be too short for {num_questions} questions."
-            )
+        if "title" not in result:
+            result["title"] = "Assessment"
 
-            # If significantly fewer, you might want to raise an error or retry
-            if generated_count < num_questions * 0.5:  # Less than 50% of requested
-                print(f"❌ Generated only {generated_count}/{num_questions} questions")
-                print("💡 Try:")
-                print("   - Providing more content")
-                print("   - Reducing the number of questions")
-                print("   - Using 'mixed' question types for more variety")
+        return shuffle_mcq_answers(result)
 
-        return result
-
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"❌ API request failed: {str(e)}")
+    except Exception as e:
+        raise Exception(f"❌ API Error: {str(e)}")
 
 
 # -------------------------
-# Validate questions data
+# PDF Styling
 # -------------------------
-def validate_questions(questions_data: Dict) -> bool:
-    """Validate the structure of generated questions."""
-    if "questions" not in questions_data:
-        raise ValueError("❌ Missing 'questions' key in data")
-
-    for idx, q in enumerate(questions_data["questions"], 1):
-        required_keys = ["question", "answer", "type", "difficulty", "options"]
-        for key in required_keys:
-            if key not in q:
-                raise ValueError(f"❌ Question {idx} missing '{key}' field")
-
-        # Validate question types
-        if q["type"] not in ["mcq", "true_false", "essay"]:
-            raise ValueError(f"❌ Question {idx} has invalid type: {q['type']}")
-
-        # Validate options based on type
-        if q["type"] == "true_false" and q["options"] != ["True", "False"]:
-            q["options"] = ["True", "False"]  # Auto-fix
-
-        if q["type"] == "mcq" and len(q["options"]) < 2:
-            raise ValueError(f"❌ Question {idx} (MCQ) needs at least 2 options")
-
-    return True
-
-
-# -------------------------
-# Save Questions as PDF
-# -------------------------
-def save_questions_to_pdf(
-    questions_data: Dict,
-    title: str = "Exam",
-    output_file: str = "exam.pdf",
-    include_answers: bool = True,
-) -> str:
-    """
-    Generate a PDF file with questions and optional answer key.
-
-    Args:
-        questions_data: Dictionary containing questions
-        title: Title for the exam
-        output_file: Output PDF filename
-        include_answers: Whether to include answer key
-
-    Returns:
-        Path to generated PDF file
-    """
-    from reportlab.lib import colors
-    from reportlab.lib.units import inch
-
-    # Validate questions first
-    validate_questions(questions_data)
-
+def create_custom_styles():
     styles = getSampleStyleSheet()
-    story = []
 
-    # Title with styling
-    story.append(Spacer(1, 0.3 * inch))
-    story.append(
-        Paragraph(
-            f"<b><font size=20 color='#2c3e50'>{title}</font></b>", styles["Title"]
+    PRIMARY_COLOR = colors.HexColor("#1565C0")  # Blue
+    TEXT_COLOR = colors.HexColor("#263238")  # Dark Grey
+
+    styles.add(
+        ParagraphStyle(
+            name="ExamTitle",
+            parent=styles["Title"],
+            fontSize=26,
+            textColor=PRIMARY_COLOR,
+            spaceAfter=20,
+            fontName="Helvetica-Bold",
+            leading=32,
         )
     )
-    story.append(Spacer(1, 0.1 * inch))
 
-    # Horizontal line
-    from reportlab.platypus import HRFlowable
+    styles.add(
+        ParagraphStyle(
+            name="Question",
+            parent=styles["Normal"],
+            fontSize=12,
+            textColor=TEXT_COLOR,
+            spaceAfter=10,
+            fontName="Helvetica-Bold",
+            leading=15,
+        )
+    )
+
+    styles.add(
+        ParagraphStyle(
+            name="Option",
+            parent=styles["Normal"],
+            fontSize=11,
+            textColor=colors.HexColor("#455A64"),
+            spaceAfter=5,
+            leftIndent=20,
+            leading=14,
+        )
+    )
+
+    styles.add(
+        ParagraphStyle(
+            name="EssayPrompt",
+            parent=styles["Italic"],
+            fontSize=10,
+            textColor=colors.HexColor("#78909c"),
+            spaceAfter=5,
+            leftIndent=20,
+        )
+    )
+
+    # Style for white text in headers
+    styles.add(
+        ParagraphStyle(
+            name="WhiteHeader",
+            parent=styles["Normal"],
+            fontSize=12,
+            textColor=colors.white,
+            fontName="Helvetica-Bold",
+            alignment=TA_LEFT,
+        )
+    )
+
+    return styles
+
+
+# Function to draw a thick rounded border on every page
+def draw_page_border(canvas, doc):
+    canvas.saveState()
+    stroke_color = colors.HexColor("#1565C0")
+    line_width = 3.5
+    corner_radius = 15
+    margin = 20
+    width, height = A4
+    canvas.setStrokeColor(stroke_color)
+    canvas.setLineWidth(line_width)
+    canvas.setFillColor(colors.white)
+    canvas.roundRect(
+        margin,
+        margin,
+        width - (2 * margin),
+        height - (2 * margin),
+        corner_radius,
+        stroke=1,
+        fill=0,
+    )
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(colors.gray)
+    canvas.drawCentredString(width / 2, margin + 8, f"Page {doc.page}")
+    canvas.restoreState()
+
+
+# -------------------------
+# Save to PDF
+# -------------------------
+def save_questions_to_pdf(
+    questions_data: Dict, output_file: str = "exam.pdf", include_answers: bool = True
+):
+    custom_styles = create_custom_styles()
+    story = []
+
+    # --- Header Section ---
+    story.append(Spacer(1, 0.2 * inch))
+    story.append(
+        Paragraph(
+            f"<b>{questions_data.get('title', 'Exam')}</b>", custom_styles["ExamTitle"]
+        )
+    )
+
+    meta_text = f"<b>Total Questions:</b> {len(questions_data['questions'])}"
+    story.append(
+        Paragraph(
+            meta_text,
+            ParagraphStyle(
+                "Meta",
+                parent=custom_styles["Normal"],
+                alignment=TA_CENTER,
+                textColor=colors.gray,
+            ),
+        )
+    )
 
     story.append(
         HRFlowable(
-            width="100%",
+            width="90%",
             thickness=2,
-            color=colors.HexColor("#3498db"),
-            spaceBefore=6,
-            spaceAfter=12,
+            color=colors.HexColor("#1565C0"),
+            spaceBefore=10,
+            spaceAfter=20,
         )
     )
-
-    story.append(
-        Paragraph(
-            f"<font size=11 color='#7f8c8d'><b>Total Questions:</b> {len(questions_data['questions'])}</font>",
-            styles["Normal"],
-        )
-    )
-    story.append(Spacer(1, 0.4 * inch))
 
     answer_data = []
 
-    # Generate questions
-    for idx, q in enumerate(questions_data["questions"], start=1):
-        # Question text - clean format
-        question_text = (
-            f"<b><font size=11 color='#2c3e50'>{idx}. {q['question']}</font></b>"
-        )
-        story.append(Paragraph(question_text, styles["Normal"]))
-        story.append(Spacer(1, 8))
+    # --- Questions Loop ---
+    # Store indices of essay questions for later
+    essay_indices = []
 
-        # Options based on type
+    for idx, q in enumerate(questions_data["questions"], 1):
+        q_content = []
+
+        # Question Text
+        q_text = f"<font color='#1565C0'>Q{idx}.</font> {format_text_with_emphasis(q['question'])}"
+        q_content.append(Paragraph(q_text, custom_styles["Question"]))
+
+        # Options
         if q["type"] == "mcq":
             for i, opt in enumerate(q["options"]):
-                letter = chr(65 + i)  # A, B, C, D...
-                option_text = f"<font size=10><b>{letter}.</b> {opt}</font>"
-                story.append(Paragraph(option_text, styles["Normal"]))
-                story.append(Spacer(1, 4))
+                letter = chr(65 + i)
+                opt_text = f"<b>{letter}.</b> {format_text_with_emphasis(opt)}"
+                q_content.append(Paragraph(opt_text, custom_styles["Option"]))
 
-            answer_data.append([str(idx), q["answer"]])
+            answer_data.append([f"Q{idx}", q["answer"], "MCQ"])
 
         elif q["type"] == "true_false":
-            story.append(
-                Paragraph("<font size=10><b>A.</b> True</font>", styles["Normal"])
-            )
-            story.append(Spacer(1, 4))
-            story.append(
-                Paragraph("<font size=10><b>B.</b> False</font>", styles["Normal"])
-            )
-            story.append(Spacer(1, 4))
-            answer_data.append([str(idx), q["answer"]])
+            q_content.append(Paragraph("<b>A.</b> True", custom_styles["Option"]))
+            q_content.append(Paragraph("<b>B.</b> False", custom_styles["Option"]))
+            ans = "A" if q["answer"] == "True" else "B"
+            answer_data.append([f"Q{idx}", ans, "T/F"])
 
-        else:  # essay
-            story.append(Spacer(1, 6))
-            story.append(
-                Paragraph(
-                    "<font size=9 color='#95a5a6'><i>Write your answer below:</i></font>",
-                    styles["Italic"],
+        elif q["type"] == "essay":
+            essay_indices.append((idx, q))  # Save index and question for later
+            q_content.append(
+                Paragraph("<i>Answer briefly below:</i>", custom_styles["EssayPrompt"])
+            )
+            q_content.append(Spacer(1, 5))
+
+            # 3 lines for essay
+            for _ in range(3):
+                q_content.append(
+                    HRFlowable(
+                        width="95%",
+                        thickness=0.5,
+                        color=colors.lightgrey,
+                        spaceAfter=18,
+                        dash=[2, 2],
+                    )
                 )
-            )
-            story.append(Spacer(1, 0.5 * inch))
-            # Add lines for writing
-            story.append(Paragraph("_" * 100, styles["Normal"]))
-            story.append(Spacer(1, 8))
-            story.append(Paragraph("_" * 100, styles["Normal"]))
-            story.append(Spacer(1, 8))
-            story.append(Paragraph("_" * 100, styles["Normal"]))
-            answer_data.append([str(idx), "See suggested answer"])
 
-        story.append(Spacer(1, 0.3 * inch))
+            answer_data.append([f"Q{idx}", "See Key", "Essay"])
 
-    # Answer key on separate page
+        q_content.append(Spacer(1, 15))
+        story.append(KeepTogether(q_content))
+
+    # --- Answer Key Page ---
     if include_answers:
         story.append(PageBreak())
-        story.append(Spacer(1, 0.3 * inch))
         story.append(
-            Paragraph(
-                "<b><font size=20 color='#2c3e50'>Answer Key</font></b>",
-                styles["Title"],
+            Paragraph("<b>Answer Key & Explanations</b>", custom_styles["ExamTitle"])
+        )
+        story.append(Spacer(1, 10))
+
+        # 1. Quick Answer Table (Exclude Essays)
+        short_answers = [row for row in answer_data if row[2] != "Essay"]
+        if short_answers:
+            table_style = TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1565C0")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#E3F2FD")],
+                    ),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ]
             )
-        )
-        story.append(
-            HRFlowable(
-                width="100%",
-                thickness=2,
-                color=colors.HexColor("#3498db"),
-                spaceBefore=6,
-                spaceAfter=20,
-            )
-        )
+            header = ["Q#", "Answer", "Type"]
+            t = Table([header] + short_answers, colWidths=[50, 300, 80])
+            t.setStyle(table_style)
+            story.append(t)
+            story.append(Spacer(1, 25))
 
-        # Answer table with better styling
-        table_data = [["Question", "Answer"]] + answer_data
-        table = Table(table_data, colWidths=[80, 420])
-        table.setStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 12),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                ("TOPPADDING", (0, 0), (-1, 0), 12),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#bdc3c7")),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (-1, -1),
-                    [colors.white, colors.HexColor("#ecf0f1")],
-                ),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 1), (-1, -1), 10),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-                ("TOPPADDING", (0, 1), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 1), (-1, -1), 10),
-            ]
-        )
-        story.append(table)
-
-        # Detailed essay answers
-        essay_questions = [
-            (idx + 1, q)
-            for idx, q in enumerate(questions_data["questions"])
-            if q["type"] == "essay"
-        ]
-
-        if essay_questions:
-            story.append(Spacer(1, 0.4 * inch))
+        # 2. Detailed Essay Answers (Designed as Cards)
+        if essay_indices:
             story.append(
-                Paragraph(
-                    "<b><font size=14 color='#2c3e50'>Essay Question - Suggested Answers</font></b>",
-                    styles["Heading2"],
-                )
+                Paragraph("<b>Model Answers for Essays</b>", custom_styles["Question"])
             )
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 5))
 
-            for q_num, q in essay_questions:
-                story.append(
-                    Paragraph(
-                        f"<b><font size=11 color='#2c3e50'>Question {q_num}:</font></b> <font size=10>{q['question']}</font>",
-                        styles["Normal"],
-                    )
+            for q_num, q_data in essay_indices:
+                # --- The Card Structure ---
+
+                # Header Row Content: "QUESTION 5"
+                header_p = Paragraph(f"QUESTION {q_num}", custom_styles["WhiteHeader"])
+
+                # Body Row Content: Question Text + Divider + Answer
+                q_text_p = Paragraph(
+                    f"<b>Question:</b><br/>{q_data['question']}",
+                    custom_styles["Normal"],
                 )
-                story.append(Spacer(1, 8))
-                story.append(
-                    Paragraph(
-                        f"<font size=10 color='#34495e'><i>Suggested Answer:</i> {q['answer']}</font>",
-                        styles["Normal"],
-                    )
+
+                divider = HRFlowable(
+                    width="100%",
+                    thickness=1,
+                    color=colors.HexColor("#A5D6A7"),
+                    spaceBefore=8,
+                    spaceAfter=8,
                 )
-                story.append(Spacer(1, 0.2 * inch))
+
+                ans_text_p = Paragraph(
+                    f"<b><font color='#2E7D32'>Model Answer:</font></b><br/>{q_data['answer']}",
+                    custom_styles["Normal"],
+                )
+
+                # We pack the body content into a list for the Table cell
+                body_content = [q_text_p, divider, ans_text_p]
+
+                # Table Data: [[Header], [Body]]
+                card_data = [[header_p], [body_content]]
+
+                # Create Table
+                t = Table(card_data, colWidths=[460])  # Width fits A4 margins
+
+                # Style the Card
+                card_style = TableStyle(
+                    [
+                        # Header Style (Dark Green Bar)
+                        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#2E7D32")),
+                        ("BOTTOMPADDING", (0, 0), (0, 0), 8),
+                        ("TOPPADDING", (0, 0), (0, 0), 8),
+                        ("LEFTPADDING", (0, 0), (0, 0), 12),
+                        # Body Style (Light Green Box)
+                        ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#F1F8E9")),
+                        ("BOTTOMPADDING", (0, 1), (0, 1), 12),
+                        ("TOPPADDING", (0, 1), (0, 1), 12),
+                        ("LEFTPADDING", (0, 1), (0, 1), 12),
+                        ("RIGHTPADDING", (0, 1), (0, 1), 12),
+                        # Outer Border (Matches Header)
+                        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#2E7D32")),
+                        (
+                            "LINEABOVE",
+                            (0, 1),
+                            (0, 1),
+                            1,
+                            colors.HexColor("#2E7D32"),
+                        ),  # Line between header and body
+                    ]
+                )
+
+                t.setStyle(card_style)
+                story.append(t)
+                story.append(Spacer(1, 15))  # Space between cards
 
     # Build PDF
-    try:
-        doc = SimpleDocTemplate(output_file, pagesize=A4)
-        doc.build(story)
-        return output_file
-    except Exception as e:
-        raise Exception(f"❌ Error creating PDF: {str(e)}")
+    doc = SimpleDocTemplate(
+        output_file,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40,
+    )
+
+    doc.build(story, onFirstPage=draw_page_border, onLaterPages=draw_page_border)
+    return output_file
 
 
 # -------------------------
-# Example usage
+# Main Execution
 # -------------------------
 if __name__ == "__main__":
-    # Example 1: Generate from text content
-    content = """
-    The human nervous system consists of the central nervous system and peripheral nervous system.
-    The central nervous system includes the brain and spinal cord, which process information and 
-    coordinate bodily functions. The peripheral nervous system connects the CNS to limbs and organs.
-    
-    Neurons are specialized cells that transmit electrical signals, allowing communication throughout 
-    the body. They consist of a cell body, dendrites that receive signals, and an axon that transmits 
-    signals to other neurons or target cells.
-    
-    The nervous system can be divided functionally into the somatic nervous system (voluntary control)
-    and the autonomic nervous system (involuntary control). The autonomic system further divides into
-    sympathetic (fight-or-flight) and parasympathetic (rest-and-digest) divisions.
+    sample_content = """
+    Photosynthesis is the process used by plants, algae and certain bacteria to harness energy from sunlight 
+    and turn it into chemical energy. There are two main stages: light-dependent reactions and the Calvin cycle.
+    Light-dependent reactions take place in the thylakoid membrane and require sunlight to produce ATP and NADPH. 
+    The Calvin cycle takes place in the stroma and uses ATP and NADPH to convert carbon dioxide into glucose.
+    Chlorophyll is the green pigment responsible for capturing light energy.
     """
 
     try:
-        print("🔄 Generating questions...")
-        result = generate_questions(
-            content=content, num_questions=6, question_type="mixed", difficulty="mixed"
+        print("🧠 Generating Exam...")
+        # Generating a mixed exam to test both MCQ and Essay formatting
+        exam_data = generate_questions(
+            sample_content, num_questions=5, question_type="mixed"
         )
 
-        print(f"✅ Generated {len(result['questions'])} questions")
+        print("🎨 Creating PDF with improved Essay Cards...")
+        pdf_name = save_questions_to_pdf(exam_data, "Biology_Exam.pdf")
 
-        print("\n🔄 Creating PDF...")
-        file_path = save_questions_to_pdf(
-            questions_data=result,
-            title="Nervous System Exam",
-            output_file="nervous_system_exam.pdf",
-            include_answers=True,
-        )
-
-        print(f"✅ PDF saved successfully: {file_path}")
-
-        # Display summary
-        print("\n📊 Question Summary:")
-        types = {}
-        for q in result["questions"]:
-            types[q["type"]] = types.get(q["type"], 0) + 1
-
-        for qtype, count in types.items():
-            print(f"  - {qtype.upper()}: {count}")
+        print(f"✅ Success! Saved to {pdf_name}")
 
     except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
-
-
-# -------------------------
-# Example 2: Generate from PDF file
-# -------------------------
-def generate_exam_from_pdf(
-    pdf_path: str,
-    num_questions: int = 10,
-    question_type: str = "mixed",
-    difficulty: str = "mixed",
-    output_file: str = None,
-) -> str:
-    """
-    Extract content from PDF and generate exam questions.
-
-    Args:
-        pdf_path: Path to PDF file
-        num_questions: Number of questions to generate
-        question_type: Type of questions
-        difficulty: Difficulty level
-        output_file: Output PDF filename (auto-generated if None)
-
-    Returns:
-        Path to generated exam PDF
-    """
-    print(f"📄 Reading PDF: {pdf_path}")
-    content = extract_pdf_text(pdf_path)
-
-    if len(content) < 100:
-        raise ValueError("❌ PDF content too short to generate meaningful questions")
-
-    print(f"✅ Extracted {len(content)} characters from PDF")
-
-    print("🔄 Generating questions...")
-    questions = generate_questions(content, num_questions, question_type, difficulty)
-
-    if output_file is None:
-        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-        output_file = f"{base_name}_exam.pdf"
-
-    print("🔄 Creating exam PDF...")
-    return save_questions_to_pdf(
-        questions_data=questions,
-        title=f"Exam: {os.path.splitext(os.path.basename(pdf_path))[0]}",
-        output_file=output_file,
-    )
+        print(f"❌ Error: {e}")
