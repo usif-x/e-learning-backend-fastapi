@@ -278,19 +278,35 @@ Requirements:
         "Content-Type": "application/json",
     }
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        raw_output = response.json()["choices"][0]["message"]["content"]
-        result = extract_json_from_response(raw_output)
+    # Retry logic for API calls
+    max_retries = 2
+    last_error = None
 
-        if "title" not in result:
-            result["title"] = "Assessment"
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            raw_output = response.json()["choices"][0]["message"]["content"]
+            result = extract_json_from_response(raw_output)
 
-        return shuffle_mcq_answers(result)
+            if "title" not in result:
+                result["title"] = "Assessment"
 
-    except Exception as e:
-        raise Exception(f"❌ API Error: {str(e)}")
+            return shuffle_mcq_answers(result)
+
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"API attempt {attempt + 1}/{max_retries + 1} failed: {str(e)}"
+            )
+            if attempt < max_retries:
+                import time
+
+                time.sleep(1)  # Brief delay before retry
+                continue
+            break
+
+    raise Exception(f"❌ API Error after {max_retries + 1} attempts: {str(last_error)}")
 
 
 # -------------------------

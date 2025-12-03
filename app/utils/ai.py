@@ -836,7 +836,7 @@ Begin generation now. Return ONLY the JSON object."""
                 status_code=400, detail=f"Failed to process PDF file: {str(e)}"
             )
         finally:
-            file.seek(0)
+            await file.seek(0)
 
     async def extract_text_from_pdf_path(self, pdf_path: str) -> str:
         """
@@ -1609,31 +1609,46 @@ Return ONLY a JSON object with this exact structure:
 
 ⚠️ IMPORTANT: Return ONLY the JSON object, no additional text or markdown."""
 
-        # Merge all filtered pages content into a single prompt
-        merged_content_parts = []
-        for page_data in filtered_pages:
-            page_num = page_data["page_number"]
-            content = page_data["content"]
-            merged_content_parts.append(f"━━━ صفحة {page_num} ━━━\n{content}")
+        # Process pages in batches to avoid timeout on large PDFs
+        # Each batch will be sent as one request
+        BATCH_SIZE = (
+            5  # Process 5 pages per request to balance efficiency vs timeout risk
+        )
+        MAX_BATCH_CONTENT_LENGTH = 6000  # Max chars per batch
 
-        merged_content = "\n\n".join(merged_content_parts)
+        explained_pages = []
 
-        # Truncate if too long for context window
-        max_content_length = 12000
-        if len(merged_content) > max_content_length:
-            merged_content = (
-                merged_content[:max_content_length] + "\n\n[Content truncated...]"
+        # Split filtered_pages into batches
+        for batch_start in range(0, len(filtered_pages), BATCH_SIZE):
+            batch_pages = filtered_pages[batch_start : batch_start + BATCH_SIZE]
+
+            # Merge batch content
+            merged_content_parts = []
+            for page_data in batch_pages:
+                page_num = page_data["page_number"]
+                content = page_data["content"]
+                merged_content_parts.append(f"━━━ صفحة {page_num} ━━━\n{content}")
+
+            merged_content = "\n\n".join(merged_content_parts)
+
+            # Truncate if too long
+            if len(merged_content) > MAX_BATCH_CONTENT_LENGTH:
+                merged_content = (
+                    merged_content[:MAX_BATCH_CONTENT_LENGTH]
+                    + "\n\n[Content truncated...]"
+                )
+
+            # Build prompt for this batch
+            examples_instruction = (
+                " وخلي الشرح يشمل أمثلة عملية" if include_examples else ""
+            )
+            detail_instruction = (
+                " شرح مفصل وواضح" if detailed_explanation else "شرح مختصر"
             )
 
-        # Build single prompt for all pages
-        examples_instruction = (
-            " وخلي الشرح يشمل أمثلة عملية" if include_examples else ""
-        )
-        detail_instruction = " شرح مفصل وواضح" if detailed_explanation else "شرح مختصر"
+            page_numbers = [p["page_number"] for p in batch_pages]
 
-        page_numbers = [p["page_number"] for p in filtered_pages]
-
-        prompt = f"""{detail_instruction} للمحتوى ده بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
+            prompt = f"""{detail_instruction} للمحتوى ده بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
 
 {merged_content}
 
@@ -1650,39 +1665,57 @@ Return ONLY a JSON object with this exact structure:
     ]
 }}"""
 
-        try:
-            response_text = await self.generate_completion(
-                prompt=prompt,
-                system_message=explanation_system_message,
-                temperature=0.7,
-                max_tokens=8000,  # Allow longer response for all pages
-            )
+            # Try with retries
+            max_retries = 2
+            batch_explained = None
 
-            # Parse the JSON response
-            result = self._extract_json_from_response(response_text)
+            for attempt in range(max_retries + 1):
+                try:
+                    response_text = await self.generate_completion(
+                        prompt=prompt,
+                        system_message=explanation_system_message,
+                        temperature=0.7,
+                        max_tokens=4000,
+                    )
 
-            if isinstance(result, dict) and "pages" in result:
-                explained_pages = result["pages"]
-            else:
-                # Fallback: treat as single explanation for all content
-                explained_pages = [
-                    {"page_number": p["page_number"], "explanation": str(result)}
-                    for p in filtered_pages
-                ]
+                    # Parse the JSON response
+                    result = self._extract_json_from_response(response_text)
 
-        except Exception as e:
-            logger.error(f"Failed to explain PDF content: {str(e)}")
-            # Fallback: return error message for all pages
-            explained_pages = [
-                {
-                    "page_number": p["page_number"],
-                    "explanation": "معلش، حصل مشكلة في الشرح. حاول تاني.",
-                }
-                for p in filtered_pages
-            ]
+                    if isinstance(result, dict) and "pages" in result:
+                        batch_explained = result["pages"]
+                    else:
+                        # Fallback: treat as single explanation for batch
+                        batch_explained = [
+                            {
+                                "page_number": p["page_number"],
+                                "explanation": str(result),
+                            }
+                            for p in batch_pages
+                        ]
+                    break  # Success, exit retry loop
+
+                except Exception as e:
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{max_retries + 1} failed for pages {page_numbers}: {str(e)}"
+                    )
+                    if attempt == max_retries:
+                        # All retries failed
+                        logger.error(
+                            f"All retries failed for pages {page_numbers}: {str(e)}"
+                        )
+                        batch_explained = [
+                            {
+                                "page_number": p["page_number"],
+                                "explanation": "معلش، حصل مشكلة في الشرح. حاول تاني.",
+                            }
+                            for p in batch_pages
+                        ]
+
+            if batch_explained:
+                explained_pages.extend(batch_explained)
 
         # Reset file pointer
-        file.seek(0)
+        await file.seek(0)
 
         return {
             "pages": explained_pages,
