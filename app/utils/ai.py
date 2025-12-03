@@ -751,14 +751,32 @@ Begin generation now. Return ONLY the JSON object."""
                     )
                     pages_with_no_text.append(page_num)
 
-            # Second pass: Use OCR for pages with no text (likely image-based)
-            if pages_with_no_text:
-                logger.info(f"Using OCR for pages: {pages_with_no_text}")
+            # Also consider pages with very short text (<5 words) as OCR candidates
+            # Helper to extract word count from a page string
+            def get_page_word_count(page_str: str) -> int:
+                # Extract content after the header line
+                lines = page_str.split("\n", 1)
+                content = lines[1] if len(lines) > 1 else ""
+                return len(content.split())
+
+            pages_with_short_text = [
+                int(re.search(r"Page (\d+)", p).group(1))
+                for p in text_content
+                if get_page_word_count(p) < 5
+            ]
+
+            pages_needing_ocr = sorted(
+                set(pages_with_no_text) | set(pages_with_short_text)
+            )
+
+            # Second pass: Use OCR for pages with no text or very short text
+            if pages_needing_ocr:
+                logger.info(f"Using OCR for pages: {pages_needing_ocr}")
                 try:
                     # Convert PDF pages to images
                     images = convert_from_bytes(contents)
 
-                    for page_num in pages_with_no_text:
+                    for page_num in pages_needing_ocr:
                         try:
                             if page_num <= len(images):
                                 image = images[page_num - 1]
@@ -767,12 +785,32 @@ Begin generation now. Return ONLY the JSON object."""
                                     image, lang="eng+ara"
                                 )
                                 if ocr_text and ocr_text.strip():
-                                    text_content.append(
-                                        f"--- Page {page_num} (OCR) ---\n{ocr_text}"
-                                    )
-                                    logger.info(
-                                        f"Successfully extracted OCR text from page {page_num}"
-                                    )
+                                    ocr_text = ocr_text.strip()
+                                    # Prefer OCR if it yields >=5 words
+                                    if len(ocr_text.split()) >= 5:
+                                        # Check if we need to replace existing short-text entry
+                                        replaced = False
+                                        for idx, entry in enumerate(text_content):
+                                            match = re.search(r"Page (\d+)", entry)
+                                            if (
+                                                match
+                                                and int(match.group(1)) == page_num
+                                            ):
+                                                text_content[idx] = (
+                                                    f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                                )
+                                                replaced = True
+                                                logger.info(
+                                                    f"Replaced short text on page {page_num} with OCR content"
+                                                )
+                                                break
+                                        if not replaced:
+                                            text_content.append(
+                                                f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                            )
+                                            logger.info(
+                                                f"Successfully extracted OCR text from page {page_num}"
+                                            )
                         except Exception as e:
                             logger.warning(f"OCR failed for page {page_num}: {str(e)}")
                             continue
@@ -835,14 +873,30 @@ Begin generation now. Return ONLY the JSON object."""
                     )
                     pages_with_no_text.append(page_num)
 
-            # Second pass: Use OCR for pages with no text (likely image-based)
-            if pages_with_no_text:
-                logger.info(f"Using OCR for pages: {pages_with_no_text}")
+            # Also consider pages with very short text (<5 words) as OCR candidates
+            def get_page_word_count(page_str: str) -> int:
+                lines = page_str.split("\n", 1)
+                content = lines[1] if len(lines) > 1 else ""
+                return len(content.split())
+
+            pages_with_short_text = [
+                int(re.search(r"Page (\d+)", p).group(1))
+                for p in text_content
+                if get_page_word_count(p) < 5
+            ]
+
+            pages_needing_ocr = sorted(
+                set(pages_with_no_text) | set(pages_with_short_text)
+            )
+
+            # Second pass: Use OCR for pages with no text or very short text
+            if pages_needing_ocr:
+                logger.info(f"Using OCR for pages: {pages_needing_ocr}")
                 try:
                     # Convert PDF pages to images using file path
                     images = convert_from_path(pdf_path)
 
-                    for page_num in pages_with_no_text:
+                    for page_num in pages_needing_ocr:
                         try:
                             if page_num <= len(images):
                                 image = images[page_num - 1]
@@ -851,12 +905,30 @@ Begin generation now. Return ONLY the JSON object."""
                                     image, lang="eng+ara"
                                 )
                                 if ocr_text and ocr_text.strip():
-                                    text_content.append(
-                                        f"--- Page {page_num} (OCR) ---\n{ocr_text}"
-                                    )
-                                    logger.info(
-                                        f"Successfully extracted OCR text from page {page_num}"
-                                    )
+                                    ocr_text = ocr_text.strip()
+                                    if len(ocr_text.split()) >= 5:
+                                        replaced = False
+                                        for idx, entry in enumerate(text_content):
+                                            match = re.search(r"Page (\d+)", entry)
+                                            if (
+                                                match
+                                                and int(match.group(1)) == page_num
+                                            ):
+                                                text_content[idx] = (
+                                                    f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                                )
+                                                replaced = True
+                                                logger.info(
+                                                    f"Replaced short text on page {page_num} with OCR content"
+                                                )
+                                                break
+                                        if not replaced:
+                                            text_content.append(
+                                                f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                            )
+                                            logger.info(
+                                                f"Successfully extracted OCR text from page {page_num}"
+                                            )
                         except Exception as e:
                             logger.warning(f"OCR failed for page {page_num}: {str(e)}")
                             continue
@@ -1341,13 +1413,21 @@ Format as JSON:
                 pages_with_no_text.append(page_num)
 
         # Second pass: Use OCR for pages with no text (likely image-based)
-        if pages_with_no_text:
-            logger.info(f"Using OCR for pages: {pages_with_no_text}")
+        # Also attempt OCR for pages that have very short extracted text
+        # (e.g., a title) because the rest of the page might be an image.
+        pages_with_short_text = [
+            p["page_number"] for p in pages_content if len(p["content"].split()) < 5
+        ]
+
+        pages_needing_ocr = sorted(set(pages_with_no_text) | set(pages_with_short_text))
+
+        if pages_needing_ocr:
+            logger.info(f"Using OCR for pages: {pages_needing_ocr}")
             try:
-                # Convert PDF pages to images
+                # Convert PDF pages to images (do a single conversion for efficiency)
                 images = convert_from_bytes(contents)
 
-                for page_num in pages_with_no_text:
+                for page_num in pages_needing_ocr:
                     try:
                         if page_num <= len(images):
                             image = images[page_num - 1]
@@ -1356,15 +1436,29 @@ Format as JSON:
                                 image, lang="eng+ara"
                             )
                             if ocr_text and ocr_text.strip():
-                                pages_content.append(
-                                    {
-                                        "page_number": page_num,
-                                        "content": ocr_text.strip(),
-                                    }
-                                )
-                                logger.info(
-                                    f"Successfully extracted OCR text from page {page_num}"
-                                )
+                                ocr_text = ocr_text.strip()
+                                # Prefer OCR text only if it yields substantive content
+                                if len(ocr_text.split()) >= 5:
+                                    replaced = False
+                                    for idx, p in enumerate(pages_content):
+                                        if p["page_number"] == page_num:
+                                            pages_content[idx]["content"] = ocr_text
+                                            replaced = True
+                                            logger.info(
+                                                f"Replaced short text on page {page_num} with OCR content"
+                                            )
+                                            break
+                                    if not replaced:
+                                        pages_content.append(
+                                            {
+                                                "page_number": page_num,
+                                                "content": ocr_text,
+                                            }
+                                        )
+                                else:
+                                    logger.info(
+                                        f"OCR on page {page_num} returned only {len(ocr_text.split())} words; keeping original text if present"
+                                    )
                     except Exception as e:
                         logger.warning(f"OCR failed for page {page_num}: {str(e)}")
                         continue
@@ -1420,8 +1514,8 @@ Format as JSON:
             content = page_data["content"].lower()
             page_num = page_data["page_number"]
 
-            # Skip pages that are too short (less than 3 words)
-            if len(content.split()) < 3:
+            # Skip pages that are too short (less than 5 words)
+            if len(content.split()) < 5:
                 logger.info(
                     f"Skipping page {page_num}: too short ({len(content.split())} words)"
                 )

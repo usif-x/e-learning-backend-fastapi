@@ -64,14 +64,28 @@ def extract_pdf_text(pdf_path: str) -> str:
                 logger.warning(f"Failed to extract text from page {page_num}: {str(e)}")
                 pages_with_no_text.append(page_num)
 
-        # Second pass: Use OCR for pages with no text (likely image-based)
-        if pages_with_no_text:
-            logger.info(f"Using OCR for pages: {pages_with_no_text}")
+        # Also consider pages with very short text (<5 words) as OCR candidates
+        def get_page_word_count(page_str: str) -> int:
+            lines = page_str.split("\n", 1)
+            content = lines[1] if len(lines) > 1 else ""
+            return len(content.split())
+
+        pages_with_short_text = [
+            int(re.search(r"Page (\d+)", p).group(1))
+            for p in text_content
+            if get_page_word_count(p) < 5
+        ]
+
+        pages_needing_ocr = sorted(set(pages_with_no_text) | set(pages_with_short_text))
+
+        # Second pass: Use OCR for pages with no text or very short text
+        if pages_needing_ocr:
+            logger.info(f"Using OCR for pages: {pages_needing_ocr}")
             try:
                 # Convert PDF pages to images
                 images = convert_from_path(pdf_path)
 
-                for page_num in pages_with_no_text:
+                for page_num in pages_needing_ocr:
                     try:
                         if page_num <= len(images):
                             image = images[page_num - 1]
@@ -80,12 +94,27 @@ def extract_pdf_text(pdf_path: str) -> str:
                                 image, lang="eng+ara"
                             )
                             if ocr_text and ocr_text.strip():
-                                text_content.append(
-                                    f"--- Page {page_num} (OCR) ---\n{ocr_text}"
-                                )
-                                logger.info(
-                                    f"Successfully extracted OCR text from page {page_num}"
-                                )
+                                ocr_text = ocr_text.strip()
+                                if len(ocr_text.split()) >= 5:
+                                    replaced = False
+                                    for idx, entry in enumerate(text_content):
+                                        match = re.search(r"Page (\d+)", entry)
+                                        if match and int(match.group(1)) == page_num:
+                                            text_content[idx] = (
+                                                f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                            )
+                                            replaced = True
+                                            logger.info(
+                                                f"Replaced short text on page {page_num} with OCR content"
+                                            )
+                                            break
+                                    if not replaced:
+                                        text_content.append(
+                                            f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                        )
+                                        logger.info(
+                                            f"Successfully extracted OCR text from page {page_num}"
+                                        )
                     except Exception as e:
                         logger.warning(f"OCR failed for page {page_num}: {str(e)}")
                         continue
