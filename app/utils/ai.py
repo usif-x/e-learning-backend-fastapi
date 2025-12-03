@@ -7,12 +7,17 @@ Enhanced with improved prompts and thinking model support
 
 import json
 import logging
+import os
 import re
+import tempfile
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 import httpx
+import pytesseract
 from fastapi import HTTPException, UploadFile
+from pdf2image import convert_from_bytes, convert_from_path
+from PIL import Image
 from PyPDF2 import PdfReader
 
 from app.core.config import settings
@@ -713,7 +718,7 @@ Begin generation now. Return ONLY the JSON object."""
 
     async def extract_text_from_pdf(self, file: UploadFile) -> str:
         """
-        Extract text content from a PDF file
+        Extract text content from a PDF file with OCR support for image-based PDFs
 
         Args:
             file: Uploaded PDF file
@@ -730,23 +735,58 @@ Begin generation now. Return ONLY the JSON object."""
 
             pdf_reader = PdfReader(pdf_file)
             text_content = []
+            pages_with_no_text = []
 
+            # First pass: Try to extract text using PyPDF2
             for page_num, page in enumerate(pdf_reader.pages, 1):
                 try:
                     text = page.extract_text()
-                    if text.strip():
+                    if text and text.strip():
                         text_content.append(f"--- Page {page_num} ---\n{text}")
+                    else:
+                        pages_with_no_text.append(page_num)
                 except Exception as e:
                     logger.warning(
                         f"Failed to extract text from page {page_num}: {str(e)}"
                     )
-                    continue
+                    pages_with_no_text.append(page_num)
+
+            # Second pass: Use OCR for pages with no text (likely image-based)
+            if pages_with_no_text:
+                logger.info(f"Using OCR for pages: {pages_with_no_text}")
+                try:
+                    # Convert PDF pages to images
+                    images = convert_from_bytes(contents)
+
+                    for page_num in pages_with_no_text:
+                        try:
+                            if page_num <= len(images):
+                                image = images[page_num - 1]
+                                # Perform OCR on the image
+                                ocr_text = pytesseract.image_to_string(
+                                    image, lang="eng+ara"
+                                )
+                                if ocr_text and ocr_text.strip():
+                                    text_content.append(
+                                        f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                    )
+                                    logger.info(
+                                        f"Successfully extracted OCR text from page {page_num}"
+                                    )
+                        except Exception as e:
+                            logger.warning(f"OCR failed for page {page_num}: {str(e)}")
+                            continue
+                except Exception as e:
+                    logger.warning(f"Failed to convert PDF to images for OCR: {str(e)}")
 
             if not text_content:
                 raise HTTPException(
                     status_code=400,
-                    detail="No text content found in PDF. The file may be empty or contain only images.",
+                    detail="No text content found in PDF. The file may be empty or OCR failed to extract text.",
                 )
+
+            # Sort by page number to maintain order
+            text_content.sort(key=lambda x: int(re.search(r"Page (\d+)", x).group(1)))
 
             return "\n\n".join(text_content)
 
@@ -762,7 +802,7 @@ Begin generation now. Return ONLY the JSON object."""
 
     async def extract_text_from_pdf_path(self, pdf_path: str) -> str:
         """
-        Extract text content from a PDF file path
+        Extract text content from a PDF file path with OCR support for image-based PDFs
 
         Args:
             pdf_path: Path to the PDF file
@@ -779,23 +819,58 @@ Begin generation now. Return ONLY the JSON object."""
 
             pdf_reader = PdfReader(pdf_file)
             text_content = []
+            pages_with_no_text = []
 
+            # First pass: Try to extract text using PyPDF2
             for page_num, page in enumerate(pdf_reader.pages, 1):
                 try:
                     text = page.extract_text()
-                    if text.strip():
+                    if text and text.strip():
                         text_content.append(f"--- Page {page_num} ---\n{text}")
+                    else:
+                        pages_with_no_text.append(page_num)
                 except Exception as e:
                     logger.warning(
                         f"Failed to extract text from page {page_num}: {str(e)}"
                     )
-                    continue
+                    pages_with_no_text.append(page_num)
+
+            # Second pass: Use OCR for pages with no text (likely image-based)
+            if pages_with_no_text:
+                logger.info(f"Using OCR for pages: {pages_with_no_text}")
+                try:
+                    # Convert PDF pages to images using file path
+                    images = convert_from_path(pdf_path)
+
+                    for page_num in pages_with_no_text:
+                        try:
+                            if page_num <= len(images):
+                                image = images[page_num - 1]
+                                # Perform OCR on the image
+                                ocr_text = pytesseract.image_to_string(
+                                    image, lang="eng+ara"
+                                )
+                                if ocr_text and ocr_text.strip():
+                                    text_content.append(
+                                        f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                    )
+                                    logger.info(
+                                        f"Successfully extracted OCR text from page {page_num}"
+                                    )
+                        except Exception as e:
+                            logger.warning(f"OCR failed for page {page_num}: {str(e)}")
+                            continue
+                except Exception as e:
+                    logger.warning(f"Failed to convert PDF to images for OCR: {str(e)}")
 
             if not text_content:
                 raise HTTPException(
                     status_code=400,
-                    detail="No text content found in PDF. The file may be empty or contain only images.",
+                    detail="No text content found in PDF. The file may be empty or OCR failed to extract text.",
                 )
+
+            # Sort by page number to maintain order
+            text_content.sort(key=lambda x: int(re.search(r"Page (\d+)", x).group(1)))
 
             return "\n\n".join(text_content)
 
@@ -1243,23 +1318,61 @@ Format as JSON:
         if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="File must be a PDF")
 
-        # Extract text from each page
+        # Extract text from each page with OCR support
         contents = await file.read()
         pdf_file = BytesIO(contents)
 
         pdf_reader = PdfReader(pdf_file)
         pages_content = []
+        pages_with_no_text = []
 
+        # First pass: Try to extract text using PyPDF2
         for page_num, page in enumerate(pdf_reader.pages, 1):
             try:
                 text = page.extract_text()
-                if text.strip():
+                if text and text.strip():
                     pages_content.append(
                         {"page_number": page_num, "content": text.strip()}
                     )
+                else:
+                    pages_with_no_text.append(page_num)
             except Exception as e:
                 logger.warning(f"Failed to extract text from page {page_num}: {str(e)}")
-                continue
+                pages_with_no_text.append(page_num)
+
+        # Second pass: Use OCR for pages with no text (likely image-based)
+        if pages_with_no_text:
+            logger.info(f"Using OCR for pages: {pages_with_no_text}")
+            try:
+                # Convert PDF pages to images
+                images = convert_from_bytes(contents)
+
+                for page_num in pages_with_no_text:
+                    try:
+                        if page_num <= len(images):
+                            image = images[page_num - 1]
+                            # Perform OCR on the image
+                            ocr_text = pytesseract.image_to_string(
+                                image, lang="eng+ara"
+                            )
+                            if ocr_text and ocr_text.strip():
+                                pages_content.append(
+                                    {
+                                        "page_number": page_num,
+                                        "content": ocr_text.strip(),
+                                    }
+                                )
+                                logger.info(
+                                    f"Successfully extracted OCR text from page {page_num}"
+                                )
+                    except Exception as e:
+                        logger.warning(f"OCR failed for page {page_num}: {str(e)}")
+                        continue
+            except Exception as e:
+                logger.warning(f"Failed to convert PDF to images for OCR: {str(e)}")
+
+        # Sort pages by page number to maintain order
+        pages_content.sort(key=lambda x: x["page_number"])
 
         if not pages_content:
             raise HTTPException(
@@ -1307,8 +1420,8 @@ Format as JSON:
             content = page_data["content"].lower()
             page_num = page_data["page_number"]
 
-            # Skip pages that are too short (likely intro/conclusion)
-            if len(content.split()) < 20:
+            # Skip pages that are too short (less than 3 words)
+            if len(content.split()) < 3:
                 logger.info(
                     f"Skipping page {page_num}: too short ({len(content.split())} words)"
                 )
