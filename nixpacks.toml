@@ -1,7 +1,8 @@
 # Nixpacks configuration for Coolify deployment
 
 [phases.setup]
-nixPkgs = ["poppler_utils", "tesseract", "tesseractLanguages.ara"]
+nixPkgs = ["poppler_utils", "tesseract"]
+aptPkgs = ["tesseract-ocr-ara"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]
