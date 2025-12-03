@@ -134,7 +134,10 @@ class AIService:
         self.api_key = settings.ai_api_key
         self.api_endpoint = settings.ai_api_endpoint
         self.model = settings.ai_model
-        self.timeout = 1800  # 1800 seconds timeout
+        # Configure timeout with specific read timeout for long API responses
+        # connect: time to establish connection, read: time to receive response chunks
+        # 15 minutes (900s) read timeout for large PDF explanations
+        self.timeout = httpx.Timeout(connect=30.0, read=900.0, write=30.0, pool=30.0)
 
         # Validate configuration
         if not self.api_key:
@@ -1611,10 +1614,8 @@ Return ONLY a JSON object with this exact structure:
 
         # Process pages in batches to avoid timeout on large PDFs
         # Each batch will be sent as one request
-        BATCH_SIZE = (
-            5  # Process 5 pages per request to balance efficiency vs timeout risk
-        )
-        MAX_BATCH_CONTENT_LENGTH = 6000  # Max chars per batch
+        BATCH_SIZE = 2  # Process 2 pages per request - smaller batches = faster response, less timeout risk
+        MAX_BATCH_CONTENT_LENGTH = 3000  # Max chars per batch (smaller for reliability)
 
         explained_pages = []
 
@@ -1675,7 +1676,7 @@ Return ONLY a JSON object with this exact structure:
                         prompt=prompt,
                         system_message=explanation_system_message,
                         temperature=0.7,
-                        max_tokens=4000,
+                        max_tokens=3000,  # Reduced for faster response
                     )
 
                     # Parse the JSON response
@@ -1698,6 +1699,11 @@ Return ONLY a JSON object with this exact structure:
                     logger.warning(
                         f"Attempt {attempt + 1}/{max_retries + 1} failed for pages {page_numbers}: {str(e)}"
                     )
+                    if attempt < max_retries:
+                        # Wait 3 seconds before retrying to give API server time to recover
+                        import asyncio
+
+                        await asyncio.sleep(3)
                     if attempt == max_retries:
                         # All retries failed
                         logger.error(
