@@ -1,0 +1,10 @@
+# Nixpacks configuration for Coolify deployment
+
+[phases.setup]
+nixPkgs = ["poppler_utils", "tesseract", "tesseractLanguages.ara"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "python main.py prod --workers 4"
