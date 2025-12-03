@@ -1593,61 +1593,93 @@ Use natural Egyptian Arabic like:
 📤 OUTPUT FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY the explanation text in Egyptian Arabic. Do NOT include JSON formatting, code blocks, or any markup. Just write the explanation as plain text. Start directly with the educational content explanation."""
+Return ONLY a JSON object with this exact structure:
+{
+    "pages": [
+        {
+            "page_number": 1,
+            "explanation": "الشرح بالعربية المصرية هنا..."
+        },
+        {
+            "page_number": 2,
+            "explanation": "الشرح بالعربية المصرية هنا..."
+        }
+    ]
+}
 
-        # Process each filtered page
-        explained_pages = []
+⚠️ IMPORTANT: Return ONLY the JSON object, no additional text or markdown."""
 
+        # Merge all filtered pages content into a single prompt
+        merged_content_parts = []
         for page_data in filtered_pages:
             page_num = page_data["page_number"]
             content = page_data["content"]
+            merged_content_parts.append(f"━━━ صفحة {page_num} ━━━\n{content}")
 
-            # Truncate content if too long for context window
-            max_content_length = 4000
-            if len(content) > max_content_length:
-                content = content[:max_content_length] + "\n\n[Content truncated...]"
+        merged_content = "\n\n".join(merged_content_parts)
 
-            # Build explanation prompt
-            examples_instruction = (
-                " وخلي الشرح يشمل أمثلة عملية" if include_examples else ""
-            )
-            detail_instruction = (
-                " شرح مفصل وواضح" if detailed_explanation else "شرح مختصر"
+        # Truncate if too long for context window
+        max_content_length = 12000
+        if len(merged_content) > max_content_length:
+            merged_content = (
+                merged_content[:max_content_length] + "\n\n[Content truncated...]"
             )
 
-            prompt = f"""{detail_instruction} لمحتوى الصفحة رقم {page_num} دي بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
+        # Build single prompt for all pages
+        examples_instruction = (
+            " وخلي الشرح يشمل أمثلة عملية" if include_examples else ""
+        )
+        detail_instruction = " شرح مفصل وواضح" if detailed_explanation else "شرح مختصر"
+
+        page_numbers = [p["page_number"] for p in filtered_pages]
+
+        prompt = f"""{detail_instruction} للمحتوى ده بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
+
+{merged_content}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📄 محتوى الصفحة رقم {page_num}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{content}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-شرح كل حاجة في الصفحة دي بالعربية المصرية، ولو في أمثلة أو تفسيرات أو شرح للمفاهيم.
+المطلوب: شرح واضح ومفيد للطلاب المصريين لكل صفحة.
 
-المطلوب: شرح واضح ومفيد للطلاب المصريين."""
+أرجع JSON فيه شرح لكل صفحة من الصفحات: {page_numbers}
 
-            try:
-                response_text = await self.generate_completion(
-                    prompt=prompt,
-                    system_message=explanation_system_message,
-                    temperature=0.7,
-                    max_tokens=3000,  # Allow longer responses for explanations
-                )
+الformat المطلوب:
+{{
+    "pages": [
+        {{"page_number": رقم_الصفحة, "explanation": "الشرح هنا..."}}
+    ]
+}}"""
 
-                explained_pages.append(
-                    {"page_number": page_num, "explanation": response_text.strip()}
-                )
+        try:
+            response_text = await self.generate_completion(
+                prompt=prompt,
+                system_message=explanation_system_message,
+                temperature=0.7,
+                max_tokens=8000,  # Allow longer response for all pages
+            )
 
-            except Exception as e:
-                logger.error(f"Failed to explain page {page_num}: {str(e)}")
-                # Add placeholder explanation if AI fails
-                explained_pages.append(
-                    {
-                        "page_number": page_num,
-                        "explanation": f"معلش، مفيش شرح متاح للصفحة رقم {page_num} دلوقتي",
-                    }
-                )
+            # Parse the JSON response
+            result = self._extract_json_from_response(response_text)
+
+            if isinstance(result, dict) and "pages" in result:
+                explained_pages = result["pages"]
+            else:
+                # Fallback: treat as single explanation for all content
+                explained_pages = [
+                    {"page_number": p["page_number"], "explanation": str(result)}
+                    for p in filtered_pages
+                ]
+
+        except Exception as e:
+            logger.error(f"Failed to explain PDF content: {str(e)}")
+            # Fallback: return error message for all pages
+            explained_pages = [
+                {
+                    "page_number": p["page_number"],
+                    "explanation": "معلش، حصل مشكلة في الشرح. حاول تاني.",
+                }
+                for p in filtered_pages
+            ]
 
         # Reset file pointer
         file.seek(0)
