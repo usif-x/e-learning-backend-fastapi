@@ -453,16 +453,20 @@ async def get_user_full_details(
     enrollments = (
         db.query(CourseEnrollment).filter(CourseEnrollment.user_id == user_id).all()
     )
-    completed_courses = len([e for e in enrollments if e.is_completed])
+    completed_courses = len([e for e in enrollments if e.completed_at is not None])
+
+    # Calculate average progress from completed_lectures / total_lectures
+    def calc_progress(e):
+        if e.total_lectures and e.total_lectures > 0:
+            return (e.completed_lectures or 0) / e.total_lectures * 100
+        return 0
 
     enrollment_stats = {
         "total_enrolled_courses": len(enrollments),
         "completed_courses": completed_courses,
         "in_progress_courses": len(enrollments) - completed_courses,
         "avg_progress": (
-            round(
-                sum(float(e.progress or 0) for e in enrollments) / len(enrollments), 2
-            )
+            round(sum(calc_progress(e) for e in enrollments) / len(enrollments), 2)
             if enrollments
             else 0
         ),

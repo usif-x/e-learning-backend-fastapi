@@ -211,9 +211,11 @@ class UserEnrollmentSummary(BaseModel):
 
     course_id: int
     course_title: Optional[str] = None
+    enrollment_type: str = "free"
     enrolled_at: datetime
-    progress: Optional[Decimal] = None
-    is_completed: bool
+    completed_lectures: int = 0
+    total_lectures: int = 0
+    progress_percentage: float = 0.0
     completed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
