@@ -1,11 +1,14 @@
 import json
+import logging
 import os
 import random
 import re
 from typing import Dict, List, Literal
 
+import pytesseract
 import requests
 from dotenv import load_dotenv
+from pdf2image import convert_from_path
 from PyPDF2 import PdfReader
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
@@ -28,19 +31,77 @@ load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("AI_API_KEY")
 DEEPSEEK_MODEL = "deepseek-chat"
 
+logger = logging.getLogger(__name__)
+
 
 # -------------------------
-# Extract text from PDF
+# Extract text from PDF with OCR support
 # -------------------------
 def extract_pdf_text(pdf_path: str) -> str:
+    """
+    Extract text from PDF with OCR support for image-based pages.
+
+    Args:
+        pdf_path: Path to the PDF file
+
+    Returns:
+        Extracted text content
+    """
     try:
         reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-        return text.strip()
+        text_content = []
+        pages_with_no_text = []
+
+        # First pass: Try to extract text using PyPDF2
+        for page_num, page in enumerate(reader.pages, 1):
+            try:
+                page_text = page.extract_text()
+                if page_text and page_text.strip():
+                    text_content.append(f"--- Page {page_num} ---\n{page_text}")
+                else:
+                    pages_with_no_text.append(page_num)
+            except Exception as e:
+                logger.warning(f"Failed to extract text from page {page_num}: {str(e)}")
+                pages_with_no_text.append(page_num)
+
+        # Second pass: Use OCR for pages with no text (likely image-based)
+        if pages_with_no_text:
+            logger.info(f"Using OCR for pages: {pages_with_no_text}")
+            try:
+                # Convert PDF pages to images
+                images = convert_from_path(pdf_path)
+
+                for page_num in pages_with_no_text:
+                    try:
+                        if page_num <= len(images):
+                            image = images[page_num - 1]
+                            # Perform OCR on the image
+                            ocr_text = pytesseract.image_to_string(
+                                image, lang="eng+ara"
+                            )
+                            if ocr_text and ocr_text.strip():
+                                text_content.append(
+                                    f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                )
+                                logger.info(
+                                    f"Successfully extracted OCR text from page {page_num}"
+                                )
+                    except Exception as e:
+                        logger.warning(f"OCR failed for page {page_num}: {str(e)}")
+                        continue
+            except Exception as e:
+                logger.warning(f"Failed to convert PDF to images for OCR: {str(e)}")
+
+        if not text_content:
+            raise Exception(
+                "No text content found in PDF. The file may be empty or OCR failed."
+            )
+
+        # Sort by page number to maintain order
+        text_content.sort(key=lambda x: int(re.search(r"Page (\d+)", x).group(1)))
+
+        return "\n\n".join(text_content)
+
     except Exception as e:
         raise Exception(f"❌ Error reading PDF: {str(e)}")
 
