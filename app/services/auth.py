@@ -32,6 +32,7 @@ from app.schemas.auth import (
     TelegramVerificationResponse,
     UserRegistrationRequest,
     UserResponse,
+    TokenCheckResponse,
 )
 
 # Setup logging
@@ -758,6 +759,55 @@ class AuthService:
                 detail="Authentication failed",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+    def check_token(self, token: str, db: Session) -> TokenCheckResponse:
+        """
+        Check if token is valid
+        """
+        try:
+            # Check if token is blacklisted
+            if token_blacklist.is_blacklisted(token):
+                return TokenCheckResponse(valid=False, reason="Token has been revoked")
+
+            # Verify access token
+            try:
+                payload = jwt_manager.verify_token(token, "access")
+            except Exception as e:
+                return TokenCheckResponse(valid=False, reason="Invalid token signature or expired")
+
+            telegram_id = payload.get("telegram_id")
+            user_id = payload.get("user_id")
+
+            if not telegram_id or not user_id:
+                return TokenCheckResponse(valid=False, reason="Invalid token payload")
+
+            # Get user from database
+            user = (
+                db.query(User)
+                .filter(User.id == user_id, User.telegram_id == telegram_id)
+                .first()
+            )
+            if not user:
+                return TokenCheckResponse(valid=False, reason="User not found")
+
+            if not user.is_active:
+                return TokenCheckResponse(valid=False, reason="Account is deactivated")
+
+            # Check if token is still valid for this user
+            if not jwt_manager.is_token_valid_for_user(token, user):
+                return TokenCheckResponse(valid=False, reason="Token is no longer valid for this user")
+
+            # Check if user was logged out from all devices
+            token_issued_at = datetime.fromtimestamp(payload.get("iat", 0))
+            if token_blacklist.is_user_logged_out(user.id, token_issued_at):
+                return TokenCheckResponse(valid=False, reason="User was logged out from all devices")
+
+            return TokenCheckResponse(valid=True, user_id=user.id, role=user.status)
+
+        except Exception as e:
+            logger.error(f"Check token error: {e}")
+            return TokenCheckResponse(valid=False, reason=f"Internal error: {str(e)}")
+
 
     # ==================== UTILITY METHODS ====================
 

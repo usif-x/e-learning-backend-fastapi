@@ -354,8 +354,20 @@ class TokenData(BaseModel):
     exp: Optional[int] = None
 
 
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class TokenCheckRequest(BaseModel):
+    token: str
+
+
+class TokenCheckResponse(BaseModel):
+    valid: bool
+    user_id: Optional[int] = None
+    role: Optional[str] = None
+    reason: Optional[str] = None
 
 
 # Update schemas

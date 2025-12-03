@@ -26,6 +26,8 @@ from app.schemas.auth import (
     TelegramVerificationResponse,
     UserRegistrationRequest,
     UserResponse,
+    TokenCheckRequest,
+    TokenCheckResponse,
 )
 from app.services.auth import auth_service
 
@@ -67,6 +69,14 @@ async def refresh_token(
 ) -> AuthResponse:
     """Refresh access token using refresh token"""
     return auth_service.refresh_token(request.refresh_token, db)
+
+
+@router.post("/check-token", response_model=TokenCheckResponse)
+async def check_token(
+    request: TokenCheckRequest, db: Session = Depends(get_db)
+) -> TokenCheckResponse:
+    """Check if token is valid"""
+    return auth_service.check_token(request.token, db)
 
 
 @router.post("/logout")
