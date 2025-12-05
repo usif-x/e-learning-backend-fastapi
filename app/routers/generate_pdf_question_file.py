@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 # Import your existing functions
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/pdf-question", tags=["AI"])
 
 @router.post("/generate-exam/")
 async def generate_exam(
+    background_tasks: BackgroundTasks,
     num_questions: int = Form(
         ..., description="Number of questions to generate", ge=1, le=100
     ),
@@ -113,12 +114,14 @@ async def generate_exam(
             include_answers=include_answers,
         )
 
+        # Schedule cleanup task
+        background_tasks.add_task(cleanup_file, output_path)
+
         # Return PDF file
         return FileResponse(
             path=output_path,
             media_type="application/pdf",
             filename=f"{exam_title.replace(' ', '_')}.pdf",
-            background=cleanup_file(output_path),
         )
 
     except HTTPException:
@@ -190,7 +193,7 @@ async def health_check():
 
 
 # Background task to cleanup temporary files
-async def cleanup_file(file_path: str):
+def cleanup_file(file_path: str):
     """Delete temporary file after response is sent."""
     try:
         if os.path.exists(file_path):
