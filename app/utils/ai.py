@@ -1614,8 +1614,8 @@ Return ONLY a JSON object with this exact structure:
 
         # Process pages in batches to avoid timeout on large PDFs
         # Each batch will be sent as one request
-        BATCH_SIZE = 2  # Process 2 pages per request - smaller batches = faster response, less timeout risk
-        MAX_BATCH_CONTENT_LENGTH = 3000  # Max chars per batch (smaller for reliability)
+        BATCH_SIZE = 10  # Process 10 pages per request - optimized for better throughput
+        MAX_BATCH_CONTENT_LENGTH = 8000  # Max chars per batch (smaller for reliability)
 
         explained_pages = []
 
@@ -1676,7 +1676,7 @@ Return ONLY a JSON object with this exact structure:
                         prompt=prompt,
                         system_message=explanation_system_message,
                         temperature=0.7,
-                        max_tokens=3000,  # Reduced for faster response
+                        max_tokens=8000,  # Reduced for faster response
                     )
 
                     # Parse the JSON response

@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import re
+from datetime import datetime
 from typing import Dict, List, Literal
 
 import pytesseract
@@ -11,10 +12,11 @@ from dotenv import load_dotenv
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch, mm
+from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     HRFlowable,
     KeepTogether,
@@ -201,7 +203,7 @@ def format_text_with_emphasis(text: str) -> str:
     formatted_text = text
     for keyword in emphasis_keywords:
         pattern = r"\b(" + re.escape(keyword) + r")\b"
-        replacement = r'<b><u><font color="#c62828">\1</font></u></b>'
+        replacement = r'<b><u><font color="#D32F2F">\1</font></u></b>'
         formatted_text = re.sub(
             pattern, replacement, formatted_text, flags=re.IGNORECASE
         )
@@ -310,310 +312,455 @@ Requirements:
 
 
 # -------------------------
-# PDF Styling
+# Modern PDF Styling
 # -------------------------
 def create_custom_styles():
+    """Create modern, professional PDF styles"""
     styles = getSampleStyleSheet()
 
-    PRIMARY_COLOR = colors.HexColor("#1565C0")  # Blue
-    TEXT_COLOR = colors.HexColor("#263238")  # Dark Grey
+    # Modern Color Palette
+    PRIMARY_COLOR = colors.HexColor("#2563EB")  # Modern Blue
+    SECONDARY_COLOR = colors.HexColor("#7C3AED")  # Purple
+    ACCENT_COLOR = colors.HexColor("#10B981")  # Green
+    TEXT_PRIMARY = colors.HexColor("#1F2937")  # Dark Gray
+    TEXT_SECONDARY = colors.HexColor("#6B7280")  # Medium Gray
+    DANGER_COLOR = colors.HexColor("#EF4444")  # Red
 
+    # Title Style - Modern and Bold
     styles.add(
         ParagraphStyle(
             name="ExamTitle",
             parent=styles["Title"],
-            fontSize=26,
+            fontSize=32,
             textColor=PRIMARY_COLOR,
-            spaceAfter=20,
+            spaceAfter=8,
             fontName="Helvetica-Bold",
-            leading=32,
+            leading=38,
+            alignment=TA_CENTER,
         )
     )
 
+    # Subtitle Style
+    styles.add(
+        ParagraphStyle(
+            name="Subtitle",
+            parent=styles["Normal"],
+            fontSize=14,
+            textColor=TEXT_SECONDARY,
+            spaceAfter=20,
+            fontName="Helvetica",
+            alignment=TA_CENTER,
+            leading=18,
+        )
+    )
+
+    # Question Style - Enhanced
     styles.add(
         ParagraphStyle(
             name="Question",
             parent=styles["Normal"],
             fontSize=12,
-            textColor=TEXT_COLOR,
-            spaceAfter=10,
-            fontName="Helvetica-Bold",
-            leading=15,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=12,
+            fontName="Helvetica",
+            leading=16,
+            leftIndent=0,
         )
     )
 
+    # Option Style - Modern
     styles.add(
         ParagraphStyle(
             name="Option",
             parent=styles["Normal"],
             fontSize=11,
-            textColor=colors.HexColor("#455A64"),
-            spaceAfter=5,
-            leftIndent=20,
-            leading=14,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=8,
+            leftIndent=25,
+            leading=15,
+            fontName="Helvetica",
         )
     )
 
+    # Essay Prompt Style
     styles.add(
         ParagraphStyle(
             name="EssayPrompt",
             parent=styles["Italic"],
             fontSize=10,
-            textColor=colors.HexColor("#78909c"),
-            spaceAfter=5,
-            leftIndent=20,
+            textColor=TEXT_SECONDARY,
+            spaceAfter=8,
+            leftIndent=25,
+            fontName="Helvetica-Oblique",
         )
     )
 
-    # Style for white text in headers
+    # White Header for Tables
     styles.add(
         ParagraphStyle(
             name="WhiteHeader",
             parent=styles["Normal"],
-            fontSize=12,
+            fontSize=13,
             textColor=colors.white,
             fontName="Helvetica-Bold",
             alignment=TA_LEFT,
         )
     )
 
+    # Section Header
+    styles.add(
+        ParagraphStyle(
+            name="SectionHeader",
+            parent=styles["Heading1"],
+            fontSize=20,
+            textColor=PRIMARY_COLOR,
+            fontName="Helvetica-Bold",
+            spaceAfter=15,
+            spaceBefore=10,
+            leading=24,
+        )
+    )
+
+    # Badge Style for Question Numbers
+    styles.add(
+        ParagraphStyle(
+            name="QuestionBadge",
+            parent=styles["Normal"],
+            fontSize=11,
+            textColor=colors.white,
+            fontName="Helvetica-Bold",
+            alignment=TA_CENTER,
+        )
+    )
+
     return styles
 
 
-# Function to draw a thick rounded border on every page
-def draw_page_border(canvas, doc):
+# Modern page decoration with gradient-like effect
+def draw_modern_page_decoration(canvas, doc):
+    """Draw modern, professional page decorations"""
     canvas.saveState()
-    stroke_color = colors.HexColor("#1565C0")
-    line_width = 3.5
-    corner_radius = 15
-    margin = 20
+    
     width, height = A4
-    canvas.setStrokeColor(stroke_color)
-    canvas.setLineWidth(line_width)
-    canvas.setFillColor(colors.white)
-    canvas.roundRect(
-        margin,
-        margin,
-        width - (2 * margin),
-        height - (2 * margin),
-        corner_radius,
-        stroke=1,
-        fill=0,
-    )
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(colors.gray)
-    canvas.drawCentredString(width / 2, margin + 8, f"Page {doc.page}")
+    
+    # Top accent bar with gradient effect
+    canvas.setFillColor(colors.HexColor("#2563EB"))
+    canvas.rect(0, height - 8, width, 8, fill=1, stroke=0)
+    
+    canvas.setFillColor(colors.HexColor("#3B82F6"))
+    canvas.rect(0, height - 16, width, 8, fill=1, stroke=0)
+    
+    # Bottom accent bar
+    canvas.setFillColor(colors.HexColor("#2563EB"))
+    canvas.rect(0, 0, width, 8, fill=1, stroke=0)
+    
+    canvas.setFillColor(colors.HexColor("#3B82F6"))
+    canvas.rect(0, 8, width, 8, fill=1, stroke=0)
+    
+    # Side decorative elements
+    canvas.setFillColor(colors.HexColor("#EFF6FF"))
+    canvas.rect(0, 16, 4, height - 32, fill=1, stroke=0)
+    canvas.rect(width - 4, 16, 4, height - 32, fill=1, stroke=0)
+    
+    # Page number in modern style
+    canvas.setFont("Helvetica", 9)
+    canvas.setFillColor(colors.HexColor("#6B7280"))
+    
+    # Center page number
+    page_text = f"Page {doc.page}"
+    canvas.drawCentredString(width / 2, 22, page_text)
+    
+    # Add timestamp on first page
+    if doc.page == 1:
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#9CA3AF"))
+        timestamp = datetime.now().strftime("%B %d, %Y")
+        canvas.drawRightString(width - 50, 22, timestamp)
+    
     canvas.restoreState()
 
 
 # -------------------------
-# Save to PDF
+# Save to Modern PDF
 # -------------------------
 def save_questions_to_pdf(
     questions_data: Dict, output_file: str = "exam.pdf", include_answers: bool = True
 ):
+    """Generate a modern, professional PDF with enhanced styling"""
     custom_styles = create_custom_styles()
     story = []
 
-    # --- Header Section ---
-    story.append(Spacer(1, 0.2 * inch))
+    # --- Modern Header Section ---
+    story.append(Spacer(1, 0.3 * inch))
+    
+    # Title with modern styling
+    title_text = questions_data.get('title', 'Professional Assessment')
     story.append(
-        Paragraph(
-            f"<b>{questions_data.get('title', 'Exam')}</b>", custom_styles["ExamTitle"]
-        )
+        Paragraph(f"<b>{title_text}</b>", custom_styles["ExamTitle"])
+    )
+    
+    # Subtitle with metadata
+    total_questions = len(questions_data['questions'])
+    mcq_count = sum(1 for q in questions_data['questions'] if q['type'] == 'mcq')
+    tf_count = sum(1 for q in questions_data['questions'] if q['type'] == 'true_false')
+    essay_count = sum(1 for q in questions_data['questions'] if q['type'] == 'essay')
+    
+    meta_parts = []
+    if mcq_count > 0:
+        meta_parts.append(f"{mcq_count} Multiple Choice")
+    if tf_count > 0:
+        meta_parts.append(f"{tf_count} True/False")
+    if essay_count > 0:
+        meta_parts.append(f"{essay_count} Essay")
+    
+    subtitle = f"Total Questions: {total_questions} • " + " • ".join(meta_parts)
+    story.append(
+        Paragraph(subtitle, custom_styles["Subtitle"])
     )
 
-    meta_text = f"<b>Total Questions:</b> {len(questions_data['questions'])}"
-    story.append(
-        Paragraph(
-            meta_text,
-            ParagraphStyle(
-                "Meta",
-                parent=custom_styles["Normal"],
-                alignment=TA_CENTER,
-                textColor=colors.gray,
-            ),
-        )
-    )
-
+    # Modern divider
     story.append(
         HRFlowable(
-            width="90%",
+            width="100%",
             thickness=2,
-            color=colors.HexColor("#1565C0"),
-            spaceBefore=10,
-            spaceAfter=20,
+            color=colors.HexColor("#2563EB"),
+            spaceBefore=5,
+            spaceAfter=25,
         )
     )
 
     answer_data = []
-
-    # --- Questions Loop ---
-    # Store indices of essay questions for later
     essay_indices = []
 
+    # --- Questions Loop with Modern Design ---
     for idx, q in enumerate(questions_data["questions"], 1):
         q_content = []
 
-        # Question Text
-        q_text = f"<font color='#1565C0'>Q{idx}.</font> {format_text_with_emphasis(q['question'])}"
-        q_content.append(Paragraph(q_text, custom_styles["Question"]))
+        # Modern Question Number Badge + Question Text
+        difficulty_colors = {
+            "easy": "#10B981",
+            "medium": "#F59E0B", 
+            "hard": "#EF4444"
+        }
+        diff_color = difficulty_colors.get(q.get("difficulty", "medium"), "#6B7280")
+        
+        # Question header with badge
+        q_header_data = [
+            [
+                Paragraph(f"<b>{idx}</b>", custom_styles["QuestionBadge"]),
+                Paragraph(format_text_with_emphasis(q['question']), custom_styles["Question"])
+            ]
+        ]
+        
+        q_header_table = Table(q_header_data, colWidths=[35, 485])
+        q_header_table.setStyle(TableStyle([
+            # Badge styling
+            ('BACKGROUND', (0, 0), (0, 0), colors.HexColor("#2563EB")),
+            ('ROUNDEDCORNERS', [8, 8, 8, 8]),
+            ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('LEFTPADDING', (0, 0), (0, 0), 8),
+            ('RIGHTPADDING', (0, 0), (0, 0), 8),
+            ('TOPPADDING', (0, 0), (0, 0), 6),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 6),
+            # Question text styling
+            ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
+            ('LEFTPADDING', (1, 0), (1, 0), 12),
+        ]))
+        
+        q_content.append(q_header_table)
+        q_content.append(Spacer(1, 8))
 
-        # Options
+        # Options with modern styling
         if q["type"] == "mcq":
             for i, opt in enumerate(q["options"]):
                 letter = chr(65 + i)
-                opt_text = f"<b>{letter}.</b> {format_text_with_emphasis(opt)}"
+                # Create option with circular bullet
+                opt_text = f'<font color="#2563EB"><b>●</b></font> <b>{letter}.</b> {format_text_with_emphasis(opt)}'
                 q_content.append(Paragraph(opt_text, custom_styles["Option"]))
 
             answer_data.append([f"Q{idx}", q["answer"], "MCQ"])
 
         elif q["type"] == "true_false":
-            q_content.append(Paragraph("<b>A.</b> True", custom_styles["Option"]))
-            q_content.append(Paragraph("<b>B.</b> False", custom_styles["Option"]))
+            opt_text_true = f'<font color="#2563EB"><b>●</b></font> <b>A.</b> True'
+            opt_text_false = f'<font color="#2563EB"><b>●</b></font> <b>B.</b> False'
+            q_content.append(Paragraph(opt_text_true, custom_styles["Option"]))
+            q_content.append(Paragraph(opt_text_false, custom_styles["Option"]))
             ans = "A" if q["answer"] == "True" else "B"
             answer_data.append([f"Q{idx}", ans, "T/F"])
 
         elif q["type"] == "essay":
-            essay_indices.append((idx, q))  # Save index and question for later
+            essay_indices.append((idx, q))
             q_content.append(
-                Paragraph("<i>Answer briefly below:</i>", custom_styles["EssayPrompt"])
+                Paragraph(
+                    '<font color="#6B7280"><i>✍ Write your answer below:</i></font>',
+                    custom_styles["EssayPrompt"]
+                )
             )
-            q_content.append(Spacer(1, 5))
+            q_content.append(Spacer(1, 8))
 
-            # 3 lines for essay
-            for _ in range(3):
+            # Modern answer lines with better spacing
+            for line_num in range(4):
                 q_content.append(
                     HRFlowable(
                         width="95%",
-                        thickness=0.5,
-                        color=colors.lightgrey,
-                        spaceAfter=18,
-                        dash=[2, 2],
+                        thickness=0.8,
+                        color=colors.HexColor("#E5E7EB"),
+                        spaceAfter=20,
                     )
                 )
 
-            answer_data.append([f"Q{idx}", "See Key", "Essay"])
+            answer_data.append([f"Q{idx}", "See Answer Key", "Essay"])
 
-        q_content.append(Spacer(1, 15))
+        # Add spacing between questions
+        q_content.append(Spacer(1, 20))
+        
+        # Light separator between questions
+        q_content.append(
+            HRFlowable(
+                width="100%",
+                thickness=0.5,
+                color=colors.HexColor("#F3F4F6"),
+                spaceAfter=20,
+            )
+        )
+        
         story.append(KeepTogether(q_content))
 
-    # --- Answer Key Page ---
+    # --- Modern Answer Key Page ---
     if include_answers:
         story.append(PageBreak())
+        
+        # Answer key header
+        story.append(Spacer(1, 0.2 * inch))
         story.append(
-            Paragraph("<b>Answer Key & Explanations</b>", custom_styles["ExamTitle"])
+            Paragraph("<b>Answer Key & Solutions</b>", custom_styles["ExamTitle"])
         )
-        story.append(Spacer(1, 10))
+        story.append(Spacer(1, 5))
+        story.append(
+            Paragraph(
+                "Comprehensive answers and explanations for all questions",
+                custom_styles["Subtitle"]
+            )
+        )
+        story.append(Spacer(1, 15))
 
-        # 1. Quick Answer Table (Exclude Essays)
+        # Modern Quick Reference Table
         short_answers = [row for row in answer_data if row[2] != "Essay"]
         if short_answers:
-            table_style = TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1565C0")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.white, colors.HexColor("#E3F2FD")],
-                    ),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ]
+            story.append(
+                Paragraph("<b>Quick Reference</b>", custom_styles["SectionHeader"])
             )
-            header = ["Q#", "Answer", "Type"]
-            t = Table([header] + short_answers, colWidths=[50, 300, 80])
+            
+            # Modern table styling
+            table_style = TableStyle([
+                # Header styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2563EB")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TOPPADDING', (0, 0), (-1, 0), 12),
+                # Body styling
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 11),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+                ('TOPPADDING', (0, 1), (-1, -1), 10),
+                # Rounded corners effect
+                ('LINEABOVE', (0, 0), (-1, 0), 2, colors.HexColor("#2563EB")),
+            ])
+            
+            header = [
+                Paragraph("<b>Question</b>", custom_styles["WhiteHeader"]),
+                Paragraph("<b>Correct Answer</b>", custom_styles["WhiteHeader"]),
+                Paragraph("<b>Type</b>", custom_styles["WhiteHeader"])
+            ]
+            
+            table_data = [header] + short_answers
+            t = Table(table_data, colWidths=[100, 280, 100])
             t.setStyle(table_style)
             story.append(t)
-            story.append(Spacer(1, 25))
+            story.append(Spacer(1, 30))
 
-        # 2. Detailed Essay Answers (Designed as Cards)
+        # Modern Essay Answer Cards
         if essay_indices:
             story.append(
-                Paragraph("<b>Model Answers for Essays</b>", custom_styles["Question"])
+                Paragraph("<b>Essay Model Answers</b>", custom_styles["SectionHeader"])
             )
-            story.append(Spacer(1, 5))
+            story.append(Spacer(1, 10))
 
             for q_num, q_data in essay_indices:
-                # --- The Card Structure ---
+                # Modern card design
+                header_p = Paragraph(
+                    f"<b>QUESTION {q_num}</b>",
+                    custom_styles["WhiteHeader"]
+                )
 
-                # Header Row Content: "QUESTION 5"
-                header_p = Paragraph(f"QUESTION {q_num}", custom_styles["WhiteHeader"])
-
-                # Body Row Content: Question Text + Divider + Answer
-                q_text_p = Paragraph(
-                    f"<b>Question:</b><br/>{q_data['question']}",
+                question_p = Paragraph(
+                    f'<b><font color="#2563EB">Question:</font></b><br/>{q_data["question"]}',
                     custom_styles["Normal"],
                 )
 
                 divider = HRFlowable(
                     width="100%",
-                    thickness=1,
-                    color=colors.HexColor("#A5D6A7"),
-                    spaceBefore=8,
-                    spaceAfter=8,
+                    thickness=1.5,
+                    color=colors.HexColor("#10B981"),
+                    spaceBefore=10,
+                    spaceAfter=10,
                 )
 
-                ans_text_p = Paragraph(
-                    f"<b><font color='#2E7D32'>Model Answer:</font></b><br/>{q_data['answer']}",
+                answer_p = Paragraph(
+                    f'<b><font color="#10B981">✓ Model Answer:</font></b><br/>{q_data["answer"]}',
                     custom_styles["Normal"],
                 )
 
-                # We pack the body content into a list for the Table cell
-                body_content = [q_text_p, divider, ans_text_p]
-
-                # Table Data: [[Header], [Body]]
+                body_content = [question_p, divider, answer_p]
                 card_data = [[header_p], [body_content]]
+                
+                card_table = Table(card_data, colWidths=[480])
+                
+                # Modern card styling with shadow effect
+                card_style = TableStyle([
+                    # Header
+                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor("#2563EB")),
+                    ('ROUNDEDCORNERS', [10, 10, 0, 0]),
+                    ('BOTTOMPADDING', (0, 0), (0, 0), 10),
+                    ('TOPPADDING', (0, 0), (0, 0), 10),
+                    ('LEFTPADDING', (0, 0), (0, 0), 15),
+                    # Body
+                    ('BACKGROUND', (0, 1), (0, 1), colors.HexColor("#F0FDF4")),
+                    ('BOTTOMPADDING', (0, 1), (0, 1), 15),
+                    ('TOPPADDING', (0, 1), (0, 1), 15),
+                    ('LEFTPADDING', (0, 1), (0, 1), 15),
+                    ('RIGHTPADDING', (0, 1), (0, 1), 15),
+                    # Border
+                    ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor("#10B981")),
+                    ('LINEABOVE', (0, 1), (0, 1), 1.5, colors.HexColor("#10B981")),
+                ])
 
-                # Create Table
-                t = Table(card_data, colWidths=[460])  # Width fits A4 margins
+                card_table.setStyle(card_style)
+                story.append(card_table)
+                story.append(Spacer(1, 18))
 
-                # Style the Card
-                card_style = TableStyle(
-                    [
-                        # Header Style (Dark Green Bar)
-                        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#2E7D32")),
-                        ("BOTTOMPADDING", (0, 0), (0, 0), 8),
-                        ("TOPPADDING", (0, 0), (0, 0), 8),
-                        ("LEFTPADDING", (0, 0), (0, 0), 12),
-                        # Body Style (Light Green Box)
-                        ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#F1F8E9")),
-                        ("BOTTOMPADDING", (0, 1), (0, 1), 12),
-                        ("TOPPADDING", (0, 1), (0, 1), 12),
-                        ("LEFTPADDING", (0, 1), (0, 1), 12),
-                        ("RIGHTPADDING", (0, 1), (0, 1), 12),
-                        # Outer Border (Matches Header)
-                        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#2E7D32")),
-                        (
-                            "LINEABOVE",
-                            (0, 1),
-                            (0, 1),
-                            1,
-                            colors.HexColor("#2E7D32"),
-                        ),  # Line between header and body
-                    ]
-                )
-
-                t.setStyle(card_style)
-                story.append(t)
-                story.append(Spacer(1, 15))  # Space between cards
-
-    # Build PDF
+    # Build PDF with modern styling
     doc = SimpleDocTemplate(
         output_file,
         pagesize=A4,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40,
+        rightMargin=45,
+        leftMargin=45,
+        topMargin=50,
+        bottomMargin=45,
     )
 
-    doc.build(story, onFirstPage=draw_page_border, onLaterPages=draw_page_border)
+    doc.build(
+        story,
+        onFirstPage=draw_modern_page_decoration,
+        onLaterPages=draw_modern_page_decoration
+    )
+    
     return output_file
 
 
@@ -630,16 +777,16 @@ if __name__ == "__main__":
     """
 
     try:
-        print("🧠 Generating Exam...")
-        # Generating a mixed exam to test both MCQ and Essay formatting
+        print("🧠 Generating Modern Exam...")
+        # Generating a mixed exam to showcase modern design
         exam_data = generate_questions(
-            sample_content, num_questions=5, question_type="mixed"
+            sample_content, num_questions=6, question_type="mixed"
         )
 
-        print("🎨 Creating PDF with improved Essay Cards...")
-        pdf_name = save_questions_to_pdf(exam_data, "Biology_Exam.pdf")
+        print("🎨 Creating Modern Professional PDF...")
+        pdf_name = save_questions_to_pdf(exam_data, "Modern_Biology_Exam.pdf")
 
-        print(f"✅ Success! Saved to {pdf_name}")
+        print(f"✅ Success! Modern PDF saved to {pdf_name}")
 
     except Exception as e:
         print(f"❌ Error: {e}")
