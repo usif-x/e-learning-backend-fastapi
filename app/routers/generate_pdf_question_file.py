@@ -117,12 +117,19 @@ async def generate_exam(
         # Schedule cleanup task
         background_tasks.add_task(cleanup_file, output_path)
 
-        # Return PDF file
-        return FileResponse(
+        # Return PDF file with explicit CORS headers
+        response = FileResponse(
             path=output_path,
             media_type="application/pdf",
             filename=f"{exam_title.replace(' ', '_')}.pdf",
         )
+        
+        # Add CORS headers explicitly for file downloads
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
 
     except HTTPException:
         raise
