@@ -502,22 +502,42 @@ MULTIPLE CHOICE REQUIREMENTS:
 ✓ Avoid "all of the above" or "none of the above"
 ✓ Distractors should represent common misconceptions
 ✓ Only ONE option is correct
-✓ Randomize correct answer position
+✓ IMPORTANT: Randomize correct answer position - use ALL indices (0, 1, 2, 3) across questions, NOT just 0 or 1
 
 OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Clear, specific question text",
+            "question": "First question text",
             "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correct_answer": 0,
-            "explanation_en": "Detailed explanation of why the answer is correct (English)",
-            "explanation_ar": "شرح تفصيلي لماذا الإجابة صحيحة (Egyptian Arabic dialect) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "correct_answer": 2,
+            "explanation_en": "Detailed explanation (English)",
+            "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second question text",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": 0,
+            "explanation_en": "Detailed explanation (English)",
+            "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
+        }},
+        {{
+            "question": "Third question text",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": 3,
+            "explanation_en": "Detailed explanation (English)",
+            "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "linking",
+            "cognitive_level": "understand"
         }}
     ]
 }}
+
+NOTE: The examples above show correct_answer values of 2, 0, and 3. Make sure to use ALL four indices (0, 1, 2, 3) randomly across your questions.
 
 COGNITIVE LEVELS:
 • remember: Recall facts
@@ -545,7 +565,7 @@ EXACT DISTRIBUTION REQUIRED:
 TRUE/FALSE REQUIREMENTS:
 ✓ Statements must be clear and unambiguous
 ✓ Avoid trick questions or double negatives
-✓ Balance True and False answers approximately 50/50
+✓ Balance True and False answers approximately 50/50 (use both 0 and 1 for correct_answer)
 ✓ Statements should test real understanding, not just memorization
 ✓ For critical thinking: require analysis of implications
 ✓ For linking: make statements that connect concepts
@@ -554,16 +574,27 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Clear True/False statement",
+            "question": "First True/False statement",
             "options": ["True", "False"],
-            "correct_answer": 0,
-            "explanation_en": "Why this is true/false with supporting details (English)",
-            "explanation_ar": "لماذا هذا صحيح/خطأ مع التفاصيل الداعمة (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "correct_answer": 1,
+            "explanation_en": "Why this is false with supporting details (English)",
+            "explanation_ar": "لماذا هذا خطأ مع التفاصيل الداعمة (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second True/False statement",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Why this is true with supporting details (English)",
+            "explanation_ar": "لماذا هذا صحيح مع التفاصيل الداعمة (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
 }}
+
+NOTE: Mix True (0) and False (1) answers evenly across questions.
 
 QUALITY EXAMPLES:
 Standard: "The mitochondria is known as the powerhouse of the cell."
@@ -642,16 +673,27 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Question text",
+            "question": "MCQ question text",
             "options": ["A", "B", "C", "D"],
-            "correct_answer": 0,
+            "correct_answer": 1,
             "explanation_en": "Detailed explanation (English)",
             "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "True/False question text",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Detailed explanation (English)",
+            "explanation_ar": "شرح تفصيلي (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
 }}
+
+NOTE: For MCQ questions, randomize correct_answer across ALL indices (0, 1, 2, 3). For T/F, balance between 0 and 1.
 
 Mix MCQ and T/F questions intelligently throughout the set.
 
@@ -1107,16 +1149,27 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Question text based on content",
+            "question": "MCQ question text based on content",
             "options": ["Option A", "Option B", "Option C", "Option D"],
-            "correct_answer": 0,
+            "correct_answer": 2,
             "explanation_en": "Explanation citing the text (English)",
             "explanation_ar": "شرح مع الإشارة للنص (Egyptian Arabic)",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "True/False question text based on content",
+            "options": ["True", "False"],
+            "correct_answer": 1,
+            "explanation_en": "Explanation citing the text (English)",
+            "explanation_ar": "شرح مع الإشارة للنص (Egyptian Arabic)",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
 }}
+
+NOTE: For MCQ, randomize correct_answer across ALL indices (0, 1, 2, 3). For T/F, balance between 0 and 1.
 
 Begin generation now. Return ONLY the JSON object."""
 
@@ -1142,21 +1195,33 @@ TRUE/FALSE REQUIREMENTS:
 ✓ Statements must be derived directly from the text or logical inferences from it
 ✓ Avoid outside knowledge not supported by the text
 ✓ Explanations must reference *why* the text supports/refutes the statement
+✓ Balance True (0) and False (1) answers evenly
 
 OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Statement based on text",
+            "question": "First statement based on text",
             "options": ["True", "False"],
-            "correct_answer": 0,
+            "correct_answer": 1,
             "explanation_en": "Evidence from text (English)",
             "explanation_ar": "الدليل من النص (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second statement based on text",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Evidence from text (English)",
+            "explanation_ar": "الدليل من النص (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
 }}
+
+NOTE: Mix True (0) and False (1) answers evenly.
 
 Begin generation now. Return ONLY the JSON object."""
 
@@ -1182,21 +1247,33 @@ MCQ REQUIREMENTS:
 ✓ Questions must be answerable *strictly* using the provided content
 ✓ Distractors should be plausible misinterpretations of the text
 ✓ Explanations should quote or reference the specific part of the text
+✓ IMPORTANT: Randomize correct answer position - use ALL indices (0, 1, 2, 3), NOT just 0 or 1
 
 OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
-            "question": "Question based on content",
+            "question": "First question based on content",
             "options": ["A", "B", "C", "D"],
-            "correct_answer": 0,
+            "correct_answer": 3,
             "explanation_en": "Explanation citing the text (English)",
             "explanation_ar": "شرح مع الإشارة للنص (Egyptian Arabic)",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second question based on content",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": 1,
+            "explanation_en": "Explanation citing the text (English)",
+            "explanation_ar": "شرح مع الإشارة للنص (Egyptian Arabic)",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
 }}
+
+NOTE: Use ALL four indices (0, 1, 2, 3) randomly across your questions.
 
 Begin generation now. Return ONLY the JSON object."""
 
@@ -1305,16 +1382,27 @@ Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Statement",
+            "question": "First statement",
             "options": ["True", "False"],
-            "correct_answer": 0,
+            "correct_answer": 1,
             "explanation_en": "Explanation (English)",
             "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second statement",
+            "options": ["True", "False"],
+            "correct_answer": 0,
+            "explanation_en": "Explanation (English)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
-}}"""
+}}
+
+NOTE: Balance True (0) and False (1) answers evenly."""
         elif question_type == "mixed":
             prompt = f"""Based on the content below, generate {count} UNIQUE MIXED questions (MCQ + T/F).
 
@@ -1329,16 +1417,27 @@ Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Question",
+            "question": "MCQ question",
             "options": ["Option A", "Option B", "Option C", "Option D"], 
-            "correct_answer": 0,
+            "correct_answer": 2,
             "explanation_en": "Explanation (English)",
             "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "True/False question",
+            "options": ["True", "False"],
+            "correct_answer": 1,
+            "explanation_en": "Explanation (English)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
-}}"""
+}}
+
+NOTE: For MCQ, use ALL indices (0, 1, 2, 3). For T/F, balance between 0 and 1."""
         else:  # Multiple Choice
             prompt = f"""Based on the content below, generate {count} UNIQUE Multiple Choice questions.
 
@@ -1353,16 +1452,27 @@ Format as JSON:
 {{
     "questions": [
         {{
-            "question": "Question",
+            "question": "First question",
             "options": ["A", "B", "C", "D"],
-            "correct_answer": 0,
+            "correct_answer": 3,
             "explanation_en": "Explanation (English)",
             "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
             "question_category": "standard",
             "cognitive_level": "remember"
+        }},
+        {{
+            "question": "Second question",
+            "options": ["A", "B", "C", "D"],
+            "correct_answer": 1,
+            "explanation_en": "Explanation (English)",
+            "explanation_ar": "شرح (Egyptian Arabic) - احتفظ بالمصطلحات الطبية بالإنجليزية واشرحها بالعربية المصرية للفهم الجيد",
+            "question_category": "critical_thinking",
+            "cognitive_level": "analyze"
         }}
     ]
-}}"""
+}}
+
+NOTE: Randomize correct_answer across ALL indices (0, 1, 2, 3)."""
 
         response_text = await self.generate_completion(
             prompt=prompt,
