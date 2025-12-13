@@ -264,3 +264,167 @@ class UsageService:
             current_date += timedelta(days=1)
 
         return {"data": chart_data, "total_minutes": total_minutes}
+
+    @staticmethod
+    def get_top_users_today(db: Session, limit: int = 20) -> list[dict]:
+        """
+        Get top users by minutes spent today.
+        Returns list of dicts with user_id, display_name, total_minutes, rank.
+        """
+        from app.models.user import User
+
+        today = date.today()
+
+        # Query to get top users for today
+        results = (
+            db.query(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+                func.sum(UserDailyUsage.minutes_spent).label("total_minutes"),
+            )
+            .join(User, UserDailyUsage.user_id == User.id)
+            .filter(UserDailyUsage.date == today)
+            .group_by(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+            )
+            .order_by(func.sum(UserDailyUsage.minutes_spent).desc())
+            .limit(limit)
+            .all()
+        )
+
+        # Format results with rank
+        top_users = []
+        for rank, (user_id, first_name, last_name, total_minutes) in enumerate(
+            results, start=1
+        ):
+            display_name = (
+                f"{first_name} {last_name}" if last_name else first_name or "Unknown"
+            )
+            top_users.append(
+                {
+                    "user_id": user_id,
+                    "display_name": display_name,
+                    "total_minutes": total_minutes or 0,
+                    "rank": rank,
+                }
+            )
+
+        return top_users
+
+    @staticmethod
+    def get_top_users_week(db: Session, limit: int = 20) -> tuple[list[dict], date, date]:
+        """
+        Get top users by minutes spent this week (Monday to Sunday).
+        Returns (top_users_list, week_start, week_end).
+        """
+        from app.models.user import User
+
+        today = date.today()
+
+        # Calculate start of week (Monday)
+        week_start = today - timedelta(days=today.weekday())
+
+        # Calculate end of week (Sunday)
+        week_end = week_start + timedelta(days=6)
+
+        # Query to get top users for this week
+        results = (
+            db.query(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+                func.sum(UserDailyUsage.minutes_spent).label("total_minutes"),
+            )
+            .join(User, UserDailyUsage.user_id == User.id)
+            .filter(
+                and_(
+                    UserDailyUsage.date >= week_start,
+                    UserDailyUsage.date <= week_end,
+                )
+            )
+            .group_by(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+            )
+            .order_by(func.sum(UserDailyUsage.minutes_spent).desc())
+            .limit(limit)
+            .all()
+        )
+
+        # Format results with rank
+        top_users = []
+        for rank, (user_id, first_name, last_name, total_minutes) in enumerate(
+            results, start=1
+        ):
+            display_name = (
+                f"{first_name} {last_name}" if last_name else first_name or "Unknown"
+            )
+            top_users.append(
+                {
+                    "user_id": user_id,
+                    "display_name": display_name,
+                    "total_minutes": total_minutes or 0,
+                    "rank": rank,
+                }
+            )
+
+        return top_users, week_start, week_end
+
+    @staticmethod
+    def get_top_users_month(db: Session, limit: int = 20) -> list[dict]:
+        """
+        Get top users by minutes spent this month.
+        Returns list of dicts with user_id, display_name, total_minutes, rank.
+        """
+        from app.models.user import User
+
+        today = date.today()
+
+        # Query to get top users for this month
+        results = (
+            db.query(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+                func.sum(UserDailyUsage.minutes_spent).label("total_minutes"),
+            )
+            .join(User, UserDailyUsage.user_id == User.id)
+            .filter(
+                and_(
+                    extract("year", UserDailyUsage.date) == today.year,
+                    extract("month", UserDailyUsage.date) == today.month,
+                )
+            )
+            .group_by(
+                UserDailyUsage.user_id,
+                User.telegram_first_name,
+                User.telegram_last_name,
+            )
+            .order_by(func.sum(UserDailyUsage.minutes_spent).desc())
+            .limit(limit)
+            .all()
+        )
+
+        # Format results with rank
+        top_users = []
+        for rank, (user_id, first_name, last_name, total_minutes) in enumerate(
+            results, start=1
+        ):
+            display_name = (
+                f"{first_name} {last_name}" if last_name else first_name or "Unknown"
+            )
+            top_users.append(
+                {
+                    "user_id": user_id,
+                    "display_name": display_name,
+                    "total_minutes": total_minutes or 0,
+                    "rank": rank,
+                }
+            )
+
+        return top_users
+

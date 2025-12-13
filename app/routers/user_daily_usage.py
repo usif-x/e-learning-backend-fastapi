@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.user_daily_usage import (
+    TopUsersResponse,
     UsageChartResponse,
     UsageMonthResponse,
     UsagePingResponse,
@@ -197,3 +198,57 @@ def get_custom_range_chart(
         total_minutes_period=result["total_minutes"],
         data=result["data"],
     )
+
+
+@router.get("/top/today", response_model=TopUsersResponse)
+def get_top_users_today(
+    db: Session = Depends(get_db),
+):
+    """Get top 20 users by minutes spent today."""
+    top_users = UsageService.get_top_users_today(db, limit=20)
+
+    return TopUsersResponse(
+        period="today",
+        start_date=date.today(),
+        end_date=date.today(),
+        users=top_users,
+    )
+
+
+@router.get("/top/week", response_model=TopUsersResponse)
+def get_top_users_week(
+    db: Session = Depends(get_db),
+):
+    """Get top 20 users by minutes spent this week (Monday to Sunday)."""
+    top_users, week_start, week_end = UsageService.get_top_users_week(db, limit=20)
+
+    return TopUsersResponse(
+        period="week",
+        start_date=week_start,
+        end_date=week_end,
+        users=top_users,
+    )
+
+
+@router.get("/top/month", response_model=TopUsersResponse)
+def get_top_users_month(
+    db: Session = Depends(get_db),
+):
+    """Get top 20 users by minutes spent this month."""
+    top_users = UsageService.get_top_users_month(db, limit=20)
+    today = date.today()
+
+    # Calculate first and last day of current month
+    import calendar
+
+    _, last_day = calendar.monthrange(today.year, today.month)
+    month_start = date(today.year, today.month, 1)
+    month_end = date(today.year, today.month, last_day)
+
+    return TopUsersResponse(
+        period="month",
+        start_date=month_start,
+        end_date=month_end,
+        users=top_users,
+    )
+

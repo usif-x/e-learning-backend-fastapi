@@ -75,6 +75,27 @@ class UsageChartResponse(BaseModel):
     data: List[DailyUsagePoint]  # This is the array for your chart
 
 
+class TopUserItem(BaseModel):
+    """Individual user in the top users list"""
+
+    user_id: int
+    display_name: str
+    total_minutes: int
+    rank: int
+
+    class Config:
+        from_attributes = True
+
+
+class TopUsersResponse(BaseModel):
+    """Response for top users leaderboard"""
+
+    period: str  # "today", "week", or "month"
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    users: List[TopUserItem]
+
+
 class ErrorResponse(BaseModel):
     """Error response"""
 
