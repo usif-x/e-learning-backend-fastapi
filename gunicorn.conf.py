@@ -11,18 +11,22 @@ from pathlib import Path
 bind = os.getenv("GUNICORN_BIND", "0.0.0.0:8000")
 backlog = 2048
 
-# Worker processes
-workers = int(os.getenv("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
+# Worker processes - OPTIMIZED FOR MEMORY
+# Formula: cpu_count + 1 (instead of cpu_count * 2 + 1)
+# This reduces memory usage significantly while maintaining good performance
+workers = int(os.getenv("GUNICORN_WORKERS", multiprocessing.cpu_count() + 1))
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
-max_requests = 1000
+
+# Aggressive worker recycling to prevent memory leaks
+max_requests = 500  # Restart after 500 requests (was 1000)
 max_requests_jitter = 50
 timeout = 120
 graceful_timeout = 30
 keepalive = 5
 
-# Restart workers after this many seconds to prevent memory leaks
-max_worker_lifetime = 3600  # 1 hour
+# Restart workers more frequently to prevent memory accumulation
+max_worker_lifetime = 1800  # 30 minutes (was 1 hour)
 
 # Security
 limit_request_line = 4096

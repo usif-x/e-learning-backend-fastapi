@@ -112,10 +112,16 @@ async def lifespan(app: FastAPI):
         logger.info(f"  - Writable: {os.access(STORAGE_DIR, os.W_OK)}")
         logger.info(f"  - Contents: {len(list(STORAGE_DIR.iterdir()))} items")
 
-        # Start usage tracking scheduler
-        logger.info("Starting usage tracking scheduler...")
-        scheduler = start_scheduler()
-        logger.info("✓ Usage tracking scheduler started successfully")
+        # Start usage tracking scheduler ONLY in master process
+        # Check if we're in a Gunicorn worker process
+        is_worker = os.getenv("GUNICORN_WORKER_ID") is not None or os.getenv("SERVER_SOFTWARE", "").startswith("gunicorn")
+        
+        if not is_worker:
+            logger.info("Starting usage tracking scheduler (master process)...")
+            scheduler = start_scheduler()
+            logger.info("✓ Usage tracking scheduler started successfully")
+        else:
+            logger.info("Skipping scheduler in worker process (will run in master only)")
 
         logger.info("✓ Application startup completed successfully")
 

@@ -138,6 +138,16 @@ class AIService:
         # connect: time to establish connection, read: time to receive response chunks
         # 15 minutes (900s) read timeout for large PDF explanations
         self.timeout = httpx.Timeout(connect=30.0, read=900.0, write=30.0, pool=30.0)
+        
+        # Connection pooling limits to prevent memory exhaustion
+        self.limits = httpx.Limits(
+            max_keepalive_connections=5,  # Reuse up to 5 connections
+            max_connections=10,  # Max 10 total connections
+            keepalive_expiry=30.0  # Close idle connections after 30s
+        )
+        
+        # Create a persistent client for connection reuse (reduces memory)
+        self._client = None
 
         # Validate configuration
         if not self.api_key:
@@ -146,6 +156,22 @@ class AIService:
             logger.warning(
                 "AI_API_ENDPOINT not configured. AI features will be disabled."
             )
+    
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create persistent HTTP client with connection pooling"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=self.limits,
+                follow_redirects=True
+            )
+        return self._client
+    
+    async def close(self):
+        """Close the HTTP client and release resources"""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     def is_configured(self) -> bool:
         """Check if AI service is properly configured"""
@@ -243,32 +269,33 @@ class AIService:
         is_thinking_model = "reasoner" in self.model.lower()
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    self.api_endpoint, headers=headers, json=payload
+            # Use persistent client instead of creating new one
+            client = await self._get_client()
+            response = await client.post(
+                self.api_endpoint, headers=headers, json=payload
+            )
+
+            if response.status_code != 200:
+                logger.error(
+                    f"AI API error: {response.status_code} - {response.text}"
+                )
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"AI API request failed: {response.text}",
                 )
 
-                if response.status_code != 200:
-                    logger.error(
-                        f"AI API error: {response.status_code} - {response.text}"
+            response_data = response.json()
+
+            # Log response structure for debugging
+            if is_thinking_model:
+                logger.info(f"Using thinking model: {self.model}")
+                if "choices" in response_data and len(response_data["choices"]) > 0:
+                    message_keys = list(
+                        response_data["choices"][0].get("message", {}).keys()
                     )
-                    raise HTTPException(
-                        status_code=response.status_code,
-                        detail=f"AI API request failed: {response.text}",
-                    )
+                    logger.info(f"Response message keys: {message_keys}")
 
-                response_data = response.json()
-
-                # Log response structure for debugging
-                if is_thinking_model:
-                    logger.info(f"Using thinking model: {self.model}")
-                    if "choices" in response_data and len(response_data["choices"]) > 0:
-                        message_keys = list(
-                            response_data["choices"][0].get("message", {}).keys()
-                        )
-                        logger.info(f"Response message keys: {message_keys}")
-
-                return response_data
+            return response_data
 
         except httpx.TimeoutException:
             logger.error("AI API request timed out")
