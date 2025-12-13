@@ -163,16 +163,9 @@ AI_API_KEY=your-deepseek-api-key
 AI_API_ENDPOINT=https://api.deepseek.com/v1/chat/completions
 AI_MODEL=deepseek-chat
 
-# File Upload
-MAX_FILE_SIZE=10485760  # 10MB in bytes
-ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/gif
-ALLOWED_VIDEO_TYPES=video/mp4,video/mpeg
 
-# Telegram (Optional)
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 
-# Redis (Optional)
-REDIS_URL=redis://localhost:6379
+### Other Env ###
 ```
 
 ### 6. Run database migrations
@@ -192,13 +185,13 @@ python -c "from app.services.admin import create_initial_admin; create_initial_a
 ### Development
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python main.py dev + ( With Reload add : --reload )
 ```
 
 ### Production
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+python main.py prod
 ```
 
 The API will be available at `http://localhost:8000`
