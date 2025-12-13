@@ -109,7 +109,7 @@ A comprehensive FastAPI-based backend for an educational platform with AI-powere
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/usif-x/e-learning-backend-fastapi
 cd backend
 ```
 
@@ -284,21 +284,6 @@ backend/
 - `POST /api/admin/login` - Admin login
 - `GET /api/admin/users` - List users
 - `GET /api/admin/analytics` - Get analytics
-- `POST /api/admin/moderate` - Moderate content
-
-## 🧪 Testing
-
-Run tests:
-
-```bash
-pytest
-```
-
-Run specific test file:
-
-```bash
-pytest test_admin_auth.py
-```
 
 ## 📝 AI Question Generation
 
@@ -361,29 +346,6 @@ The platform uses DeepSeek AI for intelligent question generation with the follo
 - SQL injection prevention (SQLAlchemy ORM)
 - CORS configuration
 - Environment-based configuration
-
-## 🚀 Deployment
-
-### Using Docker (Recommended)
-
-```bash
-docker-compose up -d
-```
-
-### Manual Deployment
-
-1. Set up PostgreSQL database
-2. Configure environment variables
-3. Run migrations: `alembic upgrade head`
-4. Start with production server: `uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4`
-
-### Environment Variables for Production
-
-- Set `DEBUG=False`
-- Use strong `SECRET_KEY`
-- Configure proper CORS origins
-- Set up SSL/TLS certificates
-- Use a reverse proxy (Nginx/Caddy)
 
 ## 📊 Database Migrations
 
