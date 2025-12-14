@@ -260,32 +260,44 @@ def generate_questions(
 
     url = "https://api.deepseek.com/v1/chat/completions"
 
-    system_prompt = """You are a professional academic examiner. Output ONLY valid JSON.
+    # Define type constraint instructions
+    type_constraints = ""
+    if question_type == "mcq":
+        type_constraints = "GENERATE ONLY MULTIPLE CHOICE QUESTIONS (MCQ). DO NOT INCLUDE TRUE/FALSE OR ESSAY QUESTIONS."
+    elif question_type == "true_false":
+        type_constraints = "GENERATE ONLY TRUE/FALSE QUESTIONS. DO NOT INCLUDE MCQ OR ESSAY QUESTIONS."
+    elif question_type == "essay":
+        type_constraints = "GENERATE ONLY ESSAY QUESTIONS. DO NOT INCLUDE MCQ OR TRUE/FALSE QUESTIONS."
+    else:
+        type_constraints = "Generate a balanced mix of MCQ, True/False, and Essay questions."
+
+    system_prompt = f"""You are a professional academic examiner. Output ONLY valid JSON.
 
 JSON STRUCTURE:
-{
+{{
   "title": "Exam Title",
   "questions": [
-    {
+    {{
       "question": "Question text here?",
       "answer": "Answer text here",
-      "type": "mcq", // or "true_false", "essay"
+      "type": "mcq", // MUST be one of: "mcq", "true_false", "essay"
       "difficulty": "medium",
-      "options": ["Option A", "Option B", "Option C", "Option D"] // Empty [] for essay
-    }
+      "options": ["Option A", "Option B", "Option C", "Option D"] // REQUIRED for MCQ, Empty [] for essay or true_false
+    }}
   ]
-}
+}}
 
 CRITICAL RULES:
-1. **SOURCE MATERIAL**: All questions must be strictly derived from the provided content.
-2. **FORMATTING**: Use keywords like NOT, EXCEPT, MOST, BEST where appropriate.
-3. **MCQ**: 4 distinct options. "answer" must match one option EXACTLY.
-4. **TRUE/FALSE**: Options must be ["True", "False"].
+1. **QUESTION COUNT**: You MUST generate exactly {num_questions} questions.
+2. **SOURCE MATERIAL**: All questions must be strictly derived from the provided content.
+3. **TYPE RESTRICTION**: {type_constraints}
+4. **MCQ FORMAT**: Must have 4 distinct options. "answer" must match one option EXACTLY.
+5. **TRUE/FALSE FORMAT**: Options must be explicitly ["True", "False"].
+6. **DIFFICULTY**: Target difficulty level: {difficulty}.
 
 **RULES FOR ESSAY QUESTIONS (STRICT):**
 - **CONCISE ANSWERS**: The 'answer' field for essays must be short and direct (Maximum 2-3 sentences).
 - **NO FLUFF**: Get straight to the point.
-- **Example**: "Mitochondria produce ATP through cellular respiration. They are known as the powerhouse of the cell."
 """
 
     user_prompt = f"""Create an exam based on this content:
@@ -307,7 +319,7 @@ Requirements:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.5,
+        "temperature": 0.4, # Slightly lower temperature for more adherence to rules
         "max_tokens": 8000,
     }
 
