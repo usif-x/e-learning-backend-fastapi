@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 # Import your existing functions
@@ -70,7 +71,7 @@ async def generate_exam(
                 temp_pdf_path = temp_pdf.name
 
             try:
-                content = extract_pdf_text(temp_pdf_path)
+                content = await run_in_threadpool(extract_pdf_text, temp_pdf_path)
                 if len(content.strip()) < 100:
                     raise HTTPException(
                         status_code=400,
@@ -88,7 +89,8 @@ async def generate_exam(
             )
 
         # Generate questions
-        questions_data = generate_questions(
+        questions_data = await run_in_threadpool(
+            generate_questions,
             content=content,
             num_questions=num_questions,
             question_type=question_type,
@@ -108,7 +110,8 @@ async def generate_exam(
         temp_output.close()
 
         # Generate PDF
-        output_path = save_questions_to_pdf(
+        output_path = await run_in_threadpool(
+            save_questions_to_pdf,
             questions_data=questions_data,
             output_file=temp_output.name,
             include_answers=include_answers,
