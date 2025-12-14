@@ -167,18 +167,54 @@ def extract_json_from_response(raw_output: str) -> Dict:
 def shuffle_mcq_answers(questions_data: Dict) -> Dict:
     for q in questions_data["questions"]:
         if q["type"] == "mcq" and q["options"]:
-            correct_answer_text = q["answer"]
+            original_options = list(q["options"])  # Copy original order
+            raw_answer = str(q.get("answer", "")).strip()
+            target_text = raw_answer
+
+            # 1. Resolve target text if answer is a letter index (A, B, C, D)
+            # and that letter is not strictly in the options as a value
+            if (
+                len(raw_answer) == 1
+                and raw_answer.upper() in ["A", "B", "C", "D", "E"]
+                and raw_answer not in original_options
+            ):
+                idx = ord(raw_answer.upper()) - 65
+                if 0 <= idx < len(original_options):
+                    target_text = original_options[idx]
+
+            # 2. Shuffle the options in place
             random.shuffle(q["options"])
+
+            # 3. Find the new index of the target text
             try:
-                correct_index = q["options"].index(correct_answer_text)
-                q["answer"] = chr(65 + correct_index)
+                # Attempt exact match first
+                new_idx = q["options"].index(target_text)
+                q["answer"] = chr(65 + new_idx)
             except ValueError:
-                for i, opt in enumerate(q["options"]):
-                    if correct_answer_text.lower() in opt.lower():
-                        q["answer"] = chr(65 + i)
-                        break
-                else:
+                # Fallback: Fuzzy matching
+                found = False
+                
+                # Try case-insensitive exact match
+                if not found:
+                    for i, opt in enumerate(q["options"]):
+                        if opt.strip().lower() == target_text.strip().lower():
+                            q["answer"] = chr(65 + i)
+                            found = True
+                            break
+                            
+                # Try loose containment (careful with short strings)
+                if not found:
+                    for i, opt in enumerate(q["options"]):
+                        # Check strictly if target is in option, avoid single letter false positives
+                        if len(target_text) > 1 and target_text.lower() in opt.lower():
+                            q["answer"] = chr(65 + i)
+                            found = True
+                            break
+
+                # Last resort: Default to A if we really can't find it
+                if not found:
                     q["answer"] = "A"
+
     return questions_data
 
 
