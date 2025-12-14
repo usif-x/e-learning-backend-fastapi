@@ -139,6 +139,7 @@ async def generate_exam(
 
 @router.post("/generate-from-text/")
 async def generate_exam_from_text(
+    background_tasks: BackgroundTasks,
     content: str = Form(..., description="Text content for generating questions"),
     num_questions: int = Form(10, ge=1, le=100),
     question_type: Literal["mcq", "true_false", "essay", "mixed"] = Form("mixed"),
@@ -151,6 +152,7 @@ async def generate_exam_from_text(
     Simpler endpoint that only accepts text content.
     """
     return await generate_exam(
+        background_tasks=background_tasks,
         num_questions=num_questions,
         question_type=question_type,
         difficulty=difficulty,
@@ -163,6 +165,7 @@ async def generate_exam_from_text(
 
 @router.post("/generate-from-pdf/")
 async def generate_exam_from_pdf(
+    background_tasks: BackgroundTasks,
     pdf_file: UploadFile = File(..., description="PDF file to extract content from"),
     num_questions: int = Form(10, ge=1, le=100),
     question_type: Literal["mcq", "true_false", "essay", "mixed"] = Form("mixed"),
@@ -175,6 +178,7 @@ async def generate_exam_from_pdf(
     Simpler endpoint that only accepts PDF uploads.
     """
     return await generate_exam(
+        background_tasks=background_tasks,
         num_questions=num_questions,
         question_type=question_type,
         difficulty=difficulty,
