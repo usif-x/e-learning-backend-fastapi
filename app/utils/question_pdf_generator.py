@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Dict, List, Literal
 
 import pytesseract
-import requests
 from dotenv import load_dotenv
+from openai import OpenAI
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader
 from reportlab.lib import colors
@@ -31,7 +31,25 @@ from reportlab.platypus import (
 load_dotenv()
 
 DEEPSEEK_API_KEY = os.getenv("AI_API_KEY")
+DEEPSEEK_API_ENDPOINT = os.getenv(
+    "AI_API_ENDPOINT", "https://api.deepseek.com/v1/chat/completions"
+)
 DEEPSEEK_MODEL = "deepseek-chat"
+
+# Initialize OpenAI client configured for DeepSeek API
+# Strip the endpoint path and keep only base URL for OpenAI SDK
+base_url = DEEPSEEK_API_ENDPOINT.replace("/v1/chat/completions", "").replace(
+    "/chat/completions", ""
+)
+if not base_url.endswith("/v1"):
+    base_url = f"{base_url}/v1"
+
+client = OpenAI(
+    api_key=DEEPSEEK_API_KEY,
+    base_url=base_url,
+    timeout=600.0,
+    max_retries=2,  # Built-in retry logic
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +211,7 @@ def shuffle_mcq_answers(questions_data: Dict) -> Dict:
             except ValueError:
                 # Fallback: Fuzzy matching
                 found = False
-                
+
                 # Try case-insensitive exact match
                 if not found:
                     for i, opt in enumerate(q["options"]):
@@ -201,7 +219,7 @@ def shuffle_mcq_answers(questions_data: Dict) -> Dict:
                             q["answer"] = chr(65 + i)
                             found = True
                             break
-                            
+
                 # Try loose containment (careful with short strings)
                 if not found:
                     for i, opt in enumerate(q["options"]):
@@ -258,18 +276,22 @@ def generate_questions(
     if not DEEPSEEK_API_KEY:
         raise ValueError("❌ AI_API_KEY not found")
 
-    url = "https://api.deepseek.com/v1/chat/completions"
-
     # Define type constraint instructions
     type_constraints = ""
     if question_type == "mcq":
         type_constraints = "GENERATE ONLY MULTIPLE CHOICE QUESTIONS (MCQ). DO NOT INCLUDE TRUE/FALSE OR ESSAY QUESTIONS."
     elif question_type == "true_false":
-        type_constraints = "GENERATE ONLY TRUE/FALSE QUESTIONS. DO NOT INCLUDE MCQ OR ESSAY QUESTIONS."
+        type_constraints = (
+            "GENERATE ONLY TRUE/FALSE QUESTIONS. DO NOT INCLUDE MCQ OR ESSAY QUESTIONS."
+        )
     elif question_type == "essay":
-        type_constraints = "GENERATE ONLY ESSAY QUESTIONS. DO NOT INCLUDE MCQ OR TRUE/FALSE QUESTIONS."
+        type_constraints = (
+            "GENERATE ONLY ESSAY QUESTIONS. DO NOT INCLUDE MCQ OR TRUE/FALSE QUESTIONS."
+        )
     else:
-        type_constraints = "Generate a balanced mix of MCQ, True/False, and Essay questions."
+        type_constraints = (
+            "Generate a balanced mix of MCQ, True/False, and Essay questions."
+        )
 
     system_prompt = f"""You are a professional academic examiner. Output ONLY valid JSON.
 
@@ -313,50 +335,29 @@ Requirements:
 - Return ONLY the JSON.
 """
 
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.4, # Slightly lower temperature for more adherence to rules
-        "max_tokens": 8000,
-    }
+    try:
+        # Use OpenAI SDK which has built-in retry logic (configured for 2 retries)
+        response = client.chat.completions.create(
+            model=DEEPSEEK_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,  # Slightly lower temperature for more adherence to rules
+            max_tokens=8000,
+        )
 
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
+        raw_output = response.choices[0].message.content
+        result = extract_json_from_response(raw_output)
 
-    # Retry logic for API calls
-    max_retries = 2
-    last_error = None
+        if "title" not in result:
+            result["title"] = "Assessment"
 
-    for attempt in range(max_retries + 1):
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=60)
-            response.raise_for_status()
-            raw_output = response.json()["choices"][0]["message"]["content"]
-            result = extract_json_from_response(raw_output)
+        return shuffle_mcq_answers(result)
 
-            if "title" not in result:
-                result["title"] = "Assessment"
-
-            return shuffle_mcq_answers(result)
-
-        except Exception as e:
-            last_error = e
-            logger.warning(
-                f"API attempt {attempt + 1}/{max_retries + 1} failed: {str(e)}"
-            )
-            if attempt < max_retries:
-                import time
-
-                time.sleep(1)  # Brief delay before retry
-                continue
-            break
-
-    raise Exception(f"❌ API Error after {max_retries + 1} attempts: {str(last_error)}")
+    except Exception as e:
+        logger.error(f"AI API request error: {str(e)}")
+        raise Exception(f"❌ API Error: {str(e)}")
 
 
 # -------------------------
@@ -488,43 +489,43 @@ def create_custom_styles():
 def draw_modern_page_decoration(canvas, doc):
     """Draw modern, professional page decorations"""
     canvas.saveState()
-    
+
     width, height = A4
-    
+
     # Top accent bar with gradient effect
     canvas.setFillColor(colors.HexColor("#2563EB"))
     canvas.rect(0, height - 8, width, 8, fill=1, stroke=0)
-    
+
     canvas.setFillColor(colors.HexColor("#3B82F6"))
     canvas.rect(0, height - 16, width, 8, fill=1, stroke=0)
-    
+
     # Bottom accent bar
     canvas.setFillColor(colors.HexColor("#2563EB"))
     canvas.rect(0, 0, width, 8, fill=1, stroke=0)
-    
+
     canvas.setFillColor(colors.HexColor("#3B82F6"))
     canvas.rect(0, 8, width, 8, fill=1, stroke=0)
-    
+
     # Side decorative elements
     canvas.setFillColor(colors.HexColor("#EFF6FF"))
     canvas.rect(0, 16, 4, height - 32, fill=1, stroke=0)
     canvas.rect(width - 4, 16, 4, height - 32, fill=1, stroke=0)
-    
+
     # Page number in modern style
     canvas.setFont("Helvetica", 9)
     canvas.setFillColor(colors.HexColor("#6B7280"))
-    
+
     # Center page number
     page_text = f"Page {doc.page}"
     canvas.drawCentredString(width / 2, 22, page_text)
-    
+
     # Add timestamp on first page
     if doc.page == 1:
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#9CA3AF"))
         timestamp = datetime.now().strftime("%B %d, %Y")
         canvas.drawRightString(width - 50, 22, timestamp)
-    
+
     canvas.restoreState()
 
 
@@ -540,19 +541,17 @@ def save_questions_to_pdf(
 
     # --- Modern Header Section ---
     story.append(Spacer(1, 0.3 * inch))
-    
+
     # Title with modern styling
-    title_text = questions_data.get('title', 'Professional Assessment')
-    story.append(
-        Paragraph(f"<b>{title_text}</b>", custom_styles["ExamTitle"])
-    )
-    
+    title_text = questions_data.get("title", "Professional Assessment")
+    story.append(Paragraph(f"<b>{title_text}</b>", custom_styles["ExamTitle"]))
+
     # Subtitle with metadata
-    total_questions = len(questions_data['questions'])
-    mcq_count = sum(1 for q in questions_data['questions'] if q['type'] == 'mcq')
-    tf_count = sum(1 for q in questions_data['questions'] if q['type'] == 'true_false')
-    essay_count = sum(1 for q in questions_data['questions'] if q['type'] == 'essay')
-    
+    total_questions = len(questions_data["questions"])
+    mcq_count = sum(1 for q in questions_data["questions"] if q["type"] == "mcq")
+    tf_count = sum(1 for q in questions_data["questions"] if q["type"] == "true_false")
+    essay_count = sum(1 for q in questions_data["questions"] if q["type"] == "essay")
+
     meta_parts = []
     if mcq_count > 0:
         meta_parts.append(f"{mcq_count} Multiple Choice")
@@ -560,11 +559,9 @@ def save_questions_to_pdf(
         meta_parts.append(f"{tf_count} True/False")
     if essay_count > 0:
         meta_parts.append(f"{essay_count} Essay")
-    
+
     subtitle = f"Total Questions: {total_questions} • " + " • ".join(meta_parts)
-    story.append(
-        Paragraph(subtitle, custom_styles["Subtitle"])
-    )
+    story.append(Paragraph(subtitle, custom_styles["Subtitle"]))
 
     # Modern divider
     story.append(
@@ -585,37 +582,39 @@ def save_questions_to_pdf(
         q_content = []
 
         # Modern Question Number Badge + Question Text
-        difficulty_colors = {
-            "easy": "#10B981",
-            "medium": "#F59E0B", 
-            "hard": "#EF4444"
-        }
+        difficulty_colors = {"easy": "#10B981", "medium": "#F59E0B", "hard": "#EF4444"}
         diff_color = difficulty_colors.get(q.get("difficulty", "medium"), "#6B7280")
-        
+
         # Question header with badge
         q_header_data = [
             [
                 Paragraph(f"<b>{idx}</b>", custom_styles["QuestionBadge"]),
-                Paragraph(format_text_with_emphasis(q['question']), custom_styles["Question"])
+                Paragraph(
+                    format_text_with_emphasis(q["question"]), custom_styles["Question"]
+                ),
             ]
         ]
-        
+
         q_header_table = Table(q_header_data, colWidths=[35, 485])
-        q_header_table.setStyle(TableStyle([
-            # Badge styling
-            ('BACKGROUND', (0, 0), (0, 0), colors.HexColor("#2563EB")),
-            ('ROUNDEDCORNERS', [8, 8, 8, 8]),
-            ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ('LEFTPADDING', (0, 0), (0, 0), 8),
-            ('RIGHTPADDING', (0, 0), (0, 0), 8),
-            ('TOPPADDING', (0, 0), (0, 0), 6),
-            ('BOTTOMPADDING', (0, 0), (0, 0), 6),
-            # Question text styling
-            ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
-            ('LEFTPADDING', (1, 0), (1, 0), 12),
-        ]))
-        
+        q_header_table.setStyle(
+            TableStyle(
+                [
+                    # Badge styling
+                    ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#2563EB")),
+                    ("ROUNDEDCORNERS", [8, 8, 8, 8]),
+                    ("VALIGN", (0, 0), (0, 0), "MIDDLE"),
+                    ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (0, 0), 8),
+                    ("RIGHTPADDING", (0, 0), (0, 0), 8),
+                    ("TOPPADDING", (0, 0), (0, 0), 6),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 6),
+                    # Question text styling
+                    ("VALIGN", (1, 0), (1, 0), "MIDDLE"),
+                    ("LEFTPADDING", (1, 0), (1, 0), 12),
+                ]
+            )
+        )
+
         q_content.append(q_header_table)
         q_content.append(Spacer(1, 8))
 
@@ -642,7 +641,7 @@ def save_questions_to_pdf(
             q_content.append(
                 Paragraph(
                     '<font color="#6B7280"><i>✍ Write your answer below:</i></font>',
-                    custom_styles["EssayPrompt"]
+                    custom_styles["EssayPrompt"],
                 )
             )
             q_content.append(Spacer(1, 8))
@@ -662,7 +661,7 @@ def save_questions_to_pdf(
 
         # Add spacing between questions
         q_content.append(Spacer(1, 20))
-        
+
         # Light separator between questions
         q_content.append(
             HRFlowable(
@@ -672,13 +671,13 @@ def save_questions_to_pdf(
                 spaceAfter=20,
             )
         )
-        
+
         story.append(KeepTogether(q_content))
 
     # --- Modern Answer Key Page ---
     if include_answers:
         story.append(PageBreak())
-        
+
         # Answer key header
         story.append(Spacer(1, 0.2 * inch))
         story.append(
@@ -688,7 +687,7 @@ def save_questions_to_pdf(
         story.append(
             Paragraph(
                 "Comprehensive answers and explanations for all questions",
-                custom_styles["Subtitle"]
+                custom_styles["Subtitle"],
             )
         )
         story.append(Spacer(1, 15))
@@ -699,34 +698,41 @@ def save_questions_to_pdf(
             story.append(
                 Paragraph("<b>Quick Reference</b>", custom_styles["SectionHeader"])
             )
-            
+
             # Modern table styling
-            table_style = TableStyle([
-                # Header styling
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2563EB")),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('TOPPADDING', (0, 0), (-1, 0), 12),
-                # Body styling
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 11),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
-                ('TOPPADDING', (0, 1), (-1, -1), 10),
-                # Rounded corners effect
-                ('LINEABOVE', (0, 0), (-1, 0), 2, colors.HexColor("#2563EB")),
-            ])
-            
+            table_style = TableStyle(
+                [
+                    # Header styling
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563EB")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 12),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                    ("TOPPADDING", (0, 0), (-1, 0), 12),
+                    # Body styling
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [colors.white, colors.HexColor("#F9FAFB")],
+                    ),
+                    ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 1), (-1, -1), 11),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 10),
+                    ("TOPPADDING", (0, 1), (-1, -1), 10),
+                    # Rounded corners effect
+                    ("LINEABOVE", (0, 0), (-1, 0), 2, colors.HexColor("#2563EB")),
+                ]
+            )
+
             header = [
                 Paragraph("<b>Question</b>", custom_styles["WhiteHeader"]),
                 Paragraph("<b>Correct Answer</b>", custom_styles["WhiteHeader"]),
-                Paragraph("<b>Type</b>", custom_styles["WhiteHeader"])
+                Paragraph("<b>Type</b>", custom_styles["WhiteHeader"]),
             ]
-            
+
             table_data = [header] + short_answers
             t = Table(table_data, colWidths=[100, 280, 100])
             t.setStyle(table_style)
@@ -743,8 +749,7 @@ def save_questions_to_pdf(
             for q_num, q_data in essay_indices:
                 # Modern card design
                 header_p = Paragraph(
-                    f"<b>QUESTION {q_num}</b>",
-                    custom_styles["WhiteHeader"]
+                    f"<b>QUESTION {q_num}</b>", custom_styles["WhiteHeader"]
                 )
 
                 question_p = Paragraph(
@@ -767,27 +772,29 @@ def save_questions_to_pdf(
 
                 body_content = [question_p, divider, answer_p]
                 card_data = [[header_p], [body_content]]
-                
+
                 card_table = Table(card_data, colWidths=[480])
-                
+
                 # Modern card styling with shadow effect
-                card_style = TableStyle([
-                    # Header
-                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor("#2563EB")),
-                    ('ROUNDEDCORNERS', [10, 10, 0, 0]),
-                    ('BOTTOMPADDING', (0, 0), (0, 0), 10),
-                    ('TOPPADDING', (0, 0), (0, 0), 10),
-                    ('LEFTPADDING', (0, 0), (0, 0), 15),
-                    # Body
-                    ('BACKGROUND', (0, 1), (0, 1), colors.HexColor("#F0FDF4")),
-                    ('BOTTOMPADDING', (0, 1), (0, 1), 15),
-                    ('TOPPADDING', (0, 1), (0, 1), 15),
-                    ('LEFTPADDING', (0, 1), (0, 1), 15),
-                    ('RIGHTPADDING', (0, 1), (0, 1), 15),
-                    # Border
-                    ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor("#10B981")),
-                    ('LINEABOVE', (0, 1), (0, 1), 1.5, colors.HexColor("#10B981")),
-                ])
+                card_style = TableStyle(
+                    [
+                        # Header
+                        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#2563EB")),
+                        ("ROUNDEDCORNERS", [10, 10, 0, 0]),
+                        ("BOTTOMPADDING", (0, 0), (0, 0), 10),
+                        ("TOPPADDING", (0, 0), (0, 0), 10),
+                        ("LEFTPADDING", (0, 0), (0, 0), 15),
+                        # Body
+                        ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#F0FDF4")),
+                        ("BOTTOMPADDING", (0, 1), (0, 1), 15),
+                        ("TOPPADDING", (0, 1), (0, 1), 15),
+                        ("LEFTPADDING", (0, 1), (0, 1), 15),
+                        ("RIGHTPADDING", (0, 1), (0, 1), 15),
+                        # Border
+                        ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#10B981")),
+                        ("LINEABOVE", (0, 1), (0, 1), 1.5, colors.HexColor("#10B981")),
+                    ]
+                )
 
                 card_table.setStyle(card_style)
                 story.append(card_table)
@@ -806,9 +813,9 @@ def save_questions_to_pdf(
     doc.build(
         story,
         onFirstPage=draw_modern_page_decoration,
-        onLaterPages=draw_modern_page_decoration
+        onLaterPages=draw_modern_page_decoration,
     )
-    
+
     return output_file
 
 

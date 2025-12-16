@@ -13,9 +13,9 @@ import tempfile
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
-import httpx
 import pytesseract
 from fastapi import HTTPException, UploadFile
+from openai import AsyncOpenAI
 from pdf2image import convert_from_bytes, convert_from_path
 from PIL import Image
 from PyPDF2 import PdfReader
@@ -134,20 +134,19 @@ class AIService:
         self.api_key = settings.ai_api_key
         self.api_endpoint = settings.ai_api_endpoint
         self.model = settings.ai_model
-        # Configure timeout with specific read timeout for long API responses
-        # connect: time to establish connection, read: time to receive response chunks
-        # 15 minutes (900s) read timeout for large PDF explanations
-        self.timeout = httpx.Timeout(connect=30.0, read=900.0, write=30.0, pool=30.0)
-        
-        # Connection pooling limits to prevent memory exhaustion
-        self.limits = httpx.Limits(
-            max_keepalive_connections=5,  # Reuse up to 5 connections
-            max_connections=10,  # Max 10 total connections
-            keepalive_expiry=30.0  # Close idle connections after 30s
+
+        # Create OpenAI client configured for DeepSeek API
+        # OpenAI SDK has built-in retry logic, connection pooling, and better timeout handling
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=(
+                self.api_endpoint.replace("/chat/completions", "")
+                if self.api_endpoint
+                else None
+            ),
+            timeout=900.0,  # 15 minutes timeout for long-running requests
+            max_retries=2,  # Automatic retry on transient failures
         )
-        
-        # Create a persistent client for connection reuse (reduces memory)
-        self._client = None
 
         # Validate configuration
         if not self.api_key:
@@ -156,22 +155,10 @@ class AIService:
             logger.warning(
                 "AI_API_ENDPOINT not configured. AI features will be disabled."
             )
-    
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create persistent HTTP client with connection pooling"""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=self.timeout,
-                limits=self.limits,
-                follow_redirects=True
-            )
-        return self._client
-    
+
     async def close(self):
-        """Close the HTTP client and release resources"""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
+        """Close the OpenAI client and release resources"""
+        await self.client.close()
 
     def is_configured(self) -> bool:
         """Check if AI service is properly configured"""
@@ -269,22 +256,16 @@ class AIService:
         is_thinking_model = "reasoner" in self.model.lower()
 
         try:
-            # Use persistent client instead of creating new one
-            client = await self._get_client()
-            response = await client.post(
-                self.api_endpoint, headers=headers, json=payload
+            # Use OpenAI SDK which has built-in retry, timeout, and connection management
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
 
-            if response.status_code != 200:
-                logger.error(
-                    f"AI API error: {response.status_code} - {response.text}"
-                )
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"AI API request failed: {response.text}",
-                )
-
-            response_data = response.json()
+            # Convert to dict for backward compatibility
+            response_data = response.model_dump()
 
             # Log response structure for debugging
             if is_thinking_model:
@@ -297,14 +278,26 @@ class AIService:
 
             return response_data
 
-        except httpx.TimeoutException:
-            logger.error("AI API request timed out")
-            raise HTTPException(status_code=504, detail="AI service request timed out")
-        except httpx.RequestError as e:
-            logger.error(f"AI API request error: {str(e)}")
-            raise HTTPException(
-                status_code=500, detail=f"Failed to connect to AI service: {str(e)}"
-            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"AI API request error: {error_msg}")
+
+            # Map OpenAI SDK errors to appropriate HTTP exceptions
+            if "timeout" in error_msg.lower():
+                raise HTTPException(
+                    status_code=504, detail="AI service request timed out"
+                )
+            elif "rate limit" in error_msg.lower():
+                raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            elif (
+                "authentication" in error_msg.lower() or "api key" in error_msg.lower()
+            ):
+                raise HTTPException(status_code=401, detail="Invalid API key")
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to connect to AI service: {error_msg}",
+                )
 
     async def generate_completion(
         self,
@@ -1751,7 +1744,9 @@ Return ONLY a JSON object with this exact structure:
 
         # Process pages in batches to avoid timeout on large PDFs
         # Each batch will be sent as one request
-        BATCH_SIZE = 10  # Process 10 pages per request - optimized for better throughput
+        BATCH_SIZE = (
+            10  # Process 10 pages per request - optimized for better throughput
+        )
         MAX_BATCH_CONTENT_LENGTH = 8000  # Max chars per batch (smaller for reliability)
 
         explained_pages = []
