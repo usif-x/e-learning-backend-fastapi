@@ -71,6 +71,7 @@ async def create_chat_session(
 async def create_chat_session_from_pdf(
     title: str = Form(..., min_length=1, max_length=255),
     language: str = Form(default="en", pattern="^(en|ar)$"),
+    session_type: str = Form(default="asking", pattern="^(asking|explaining)$"),
     pdf_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -83,6 +84,7 @@ async def create_chat_session_from_pdf(
 
     - **title**: Title for the chat session
     - **language**: Preferred language for the chat (en or ar)
+    - **session_type**: Type of session - 'asking' (AI asks questions) or 'explaining' (AI explains content)
     - **pdf_file**: The PDF file to extract content from
     """
     # Validate file type
@@ -95,6 +97,7 @@ async def create_chat_session_from_pdf(
     session_data = ChatSessionCreateFromPDF(
         title=title,
         language=language,
+        session_type=session_type,
     )
 
     return await chat_service.create_session_from_pdf(

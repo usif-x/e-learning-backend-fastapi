@@ -26,6 +26,9 @@ class ChatSession(Base):
         Text, nullable=False
     )  # The source content (extracted from PDF or user input)
     language = Column(String(10), default="en")  # 'en' or 'ar'
+    session_type = Column(
+        String(20), default="asking", nullable=False
+    )  # 'asking' or 'explaining'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -47,6 +47,7 @@ class ChatSessionBase(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=255)
     language: str = Field(default="en", pattern="^(en|ar)$")
+    session_type: str = Field(default="asking", pattern="^(asking|explaining)$")
 
 
 class ChatSessionCreate(ChatSessionBase):
@@ -68,6 +69,7 @@ class ChatSessionUpdate(BaseModel):
 
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     language: Optional[str] = Field(None, pattern="^(en|ar)$")
+    session_type: Optional[str] = Field(None, pattern="^(asking|explaining)$")
     is_active: Optional[bool] = None
 
 

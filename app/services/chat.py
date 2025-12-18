@@ -51,6 +51,7 @@ class ChatService:
             title=session_data.title,
             content=session_data.content,
             language=session_data.language,
+            session_type=session_data.session_type,
         )
 
         db.add(chat_session)
@@ -97,6 +98,7 @@ class ChatService:
             title=session_data.title,
             content=pdf_content,
             language=session_data.language,
+            session_type=session_data.session_type,
         )
 
         db.add(chat_session)
@@ -128,6 +130,7 @@ class ChatService:
             content_preview=chat_session.content[:1000],
             language=chat_session.language,
             user_name=user_name,
+            session_type=chat_session.session_type,
         )
 
         # Create the greeting message
@@ -308,6 +311,7 @@ class ChatService:
                 conversation_history=history,
                 language=chat_session.language,
                 user_name=user_name,
+                session_type=chat_session.session_type,
             )
         except Exception as e:
             logger.error(f"Failed to generate AI response: {str(e)}")
@@ -416,6 +420,7 @@ class ChatService:
                 conversation_history=history,
                 language=chat_session.language,
                 user_name=user_name,
+                session_type=chat_session.session_type,
             ):
                 full_response += chunk
                 # Send content chunk
