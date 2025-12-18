@@ -167,14 +167,36 @@ def get_chat_session(
     )
 
 
-@router.api_route(
+@router.patch(
     "/sessions/{session_id}",
-    methods=["PATCH", "PUT"],
     response_model=ChatSessionResponse,
     summary="Update chat session",
     description="Update chat session properties",
 )
-def update_chat_session(
+def patch_chat_session(
+    session_id: int,
+    update_data: ChatSessionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update a chat session's properties like title, language, or active status.
+    """
+    return chat_service.update_session(
+        db=db,
+        session_id=session_id,
+        user_id=current_user.id,
+        update_data=update_data,
+    )
+
+
+@router.put(
+    "/sessions/{session_id}",
+    response_model=ChatSessionResponse,
+    summary="Update chat session",
+    description="Update chat session properties",
+)
+def put_chat_session(
     session_id: int,
     update_data: ChatSessionUpdate,
     db: Session = Depends(get_db),

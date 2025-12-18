@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import os
@@ -6,11 +7,10 @@ import re
 from datetime import datetime
 from typing import Dict, List, Literal
 
+import fitz  # PyMuPDF
 import pytesseract
 from dotenv import load_dotenv
 from openai import OpenAI
-from pdf2image import convert_from_path
-from PyPDF2 import PdfReader
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -26,6 +26,11 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
+)
+
+from app.utils.prompts import (
+    get_exam_generator_system_prompt,
+    get_exam_generator_user_prompt,
 )
 
 load_dotenv()
@@ -68,14 +73,14 @@ def extract_pdf_text(pdf_path: str) -> str:
         Extracted text content
     """
     try:
-        reader = PdfReader(pdf_path)
+        doc = fitz.open(pdf_path)
         text_content = []
         pages_with_no_text = []
 
-        # First pass: Try to extract text using PyPDF2
-        for page_num, page in enumerate(reader.pages, 1):
+        # First pass: Try to extract text using PyMuPDF
+        for page_num, page in enumerate(doc, 1):
             try:
-                page_text = page.extract_text()
+                page_text = page.get_text()
                 if page_text and page_text.strip():
                     text_content.append(f"--- Page {page_num} ---\n{page_text}")
                 else:
@@ -102,39 +107,41 @@ def extract_pdf_text(pdf_path: str) -> str:
         if pages_needing_ocr:
             logger.info(f"Using OCR for pages: {pages_needing_ocr}")
             try:
-                # Convert PDF pages to images
-                images = convert_from_path(pdf_path)
-
                 for page_num in pages_needing_ocr:
                     try:
-                        if page_num <= len(images):
-                            image = images[page_num - 1]
-                            # Perform OCR on the image
-                            ocr_text = pytesseract.image_to_string(
-                                image, lang="eng+ara"
-                            )
-                            if ocr_text and ocr_text.strip():
-                                ocr_text = ocr_text.strip()
-                                if len(ocr_text.split()) >= 5:
-                                    replaced = False
-                                    for idx, entry in enumerate(text_content):
-                                        match = re.search(r"Page (\d+)", entry)
-                                        if match and int(match.group(1)) == page_num:
-                                            text_content[idx] = (
-                                                f"--- Page {page_num} (OCR) ---\n{ocr_text}"
-                                            )
-                                            replaced = True
-                                            logger.info(
-                                                f"Replaced short text on page {page_num} with OCR content"
-                                            )
-                                            break
-                                    if not replaced:
-                                        text_content.append(
+                        # Load page (0-indexed)
+                        page = doc.load_page(page_num - 1)
+                        # Get image from page
+                        pix = page.get_pixmap(
+                            matrix=fitz.Matrix(2, 2)
+                        )  # 2x zoom for better OCR
+                        img_data = pix.tobytes("png")
+                        image = Image.open(io.BytesIO(img_data))
+
+                        # Perform OCR on the image
+                        ocr_text = pytesseract.image_to_string(image, lang="eng+ara")
+                        if ocr_text and ocr_text.strip():
+                            ocr_text = ocr_text.strip()
+                            if len(ocr_text.split()) >= 5:
+                                replaced = False
+                                for idx, entry in enumerate(text_content):
+                                    match = re.search(r"Page (\d+)", entry)
+                                    if match and int(match.group(1)) == page_num:
+                                        text_content[idx] = (
                                             f"--- Page {page_num} (OCR) ---\n{ocr_text}"
                                         )
+                                        replaced = True
                                         logger.info(
-                                            f"Successfully extracted OCR text from page {page_num}"
+                                            f"Replaced short text on page {page_num} with OCR content"
                                         )
+                                        break
+                                if not replaced:
+                                    text_content.append(
+                                        f"--- Page {page_num} (OCR) ---\n{ocr_text}"
+                                    )
+                                    logger.info(
+                                        f"Successfully extracted OCR text from page {page_num}"
+                                    )
                     except Exception as e:
                         logger.warning(f"OCR failed for page {page_num}: {str(e)}")
                         continue
@@ -293,47 +300,13 @@ def generate_questions(
             "Generate a balanced mix of MCQ, True/False, and Essay questions."
         )
 
-    system_prompt = f"""You are a professional academic examiner. Output ONLY valid JSON.
+    system_prompt = get_exam_generator_system_prompt(
+        num_questions, type_constraints, difficulty
+    )
 
-JSON STRUCTURE:
-{{
-  "title": "Exam Title",
-  "questions": [
-    {{
-      "question": "Question text here?",
-      "answer": "Answer text here",
-      "type": "mcq", // MUST be one of: "mcq", "true_false", "essay"
-      "difficulty": "medium",
-      "options": ["Option A", "Option B", "Option C", "Option D"] // REQUIRED for MCQ, Empty [] for essay or true_false
-    }}
-  ]
-}}
-
-CRITICAL RULES:
-1. **QUESTION COUNT**: You MUST generate exactly {num_questions} questions.
-2. **SOURCE MATERIAL**: All questions must be strictly derived from the provided content.
-3. **TYPE RESTRICTION**: {type_constraints}
-4. **MCQ FORMAT**: Must have 4 distinct options. "answer" must match one option EXACTLY.
-5. **TRUE/FALSE FORMAT**: Options must be explicitly ["True", "False"].
-6. **DIFFICULTY**: Target difficulty level: {difficulty}.
-
-**RULES FOR ESSAY QUESTIONS (STRICT):**
-- **CONCISE ANSWERS**: The 'answer' field for essays must be short and direct (Maximum 2-3 sentences).
-- **NO FLUFF**: Get straight to the point.
-"""
-
-    user_prompt = f"""Create an exam based on this content:
----
-{content}
----
-
-Requirements:
-- Count: EXACTLY {num_questions} questions.
-- Type: {question_type}
-- Difficulty: {difficulty}
-- **Essay Answers**: Keep them very short (2-3 sentences max).
-- Return ONLY the JSON.
-"""
+    user_prompt = get_exam_generator_user_prompt(
+        content, num_questions, question_type, difficulty
+    )
 
     try:
         # Use OpenAI SDK which has built-in retry logic (configured for 2 retries)

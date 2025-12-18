@@ -25,7 +25,7 @@ A comprehensive FastAPI-based backend for an educational platform with AI-powere
 
 ### Advanced PDF Processing
 
-- **Text Extraction**: Extract text from PDFs using PyPDF2
+- **Text Extraction**: Extract text from PDFs using PyMuPDF (fitz)
 - **OCR Support**: Automatic OCR for image-based PDFs using Tesseract
   - Supports English and Arabic languages
   - Smart detection of pages requiring OCR (<5 words threshold)
@@ -76,8 +76,7 @@ A comprehensive FastAPI-based backend for an educational platform with AI-powere
 
 - **DeepSeek AI**: AI model for question generation and content analysis
 - **PyTesseract**: OCR engine for image-based PDFs
-- **pdf2image**: Convert PDF pages to images
-- **PyPDF2**: PDF text extraction
+- **PyMuPDF**: High-performance PDF text extraction and image conversion
 
 ### Authentication & Security
 
@@ -325,7 +324,7 @@ The platform uses DeepSeek AI for intelligent question generation with the follo
 
 ### Content Extraction
 
-- Text extraction using PyPDF2
+- Text extraction using PyMuPDF
 - Fallback to OCR for images
 - Page-by-page processing
 - Batch processing for efficiency
