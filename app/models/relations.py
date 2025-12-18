@@ -209,3 +209,10 @@ def setup_relationships():
         cascade="all, delete-orphan",
     )
     QuizAttempt.lecture = relationship("Lecture", back_populates="quiz_attempts")
+
+    # 22. User to ChatSessions (One-to-Many)
+    User.chat_sessions = relationship(
+        "ChatSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

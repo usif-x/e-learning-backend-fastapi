@@ -3,6 +3,7 @@ from .ai import router as ai_router
 from .analytics import router as analytics_router
 from .auth import router as auth_router
 from .category import router as category_router
+from .chat import router as chat_router
 from .community import router as community_router
 from .course import router as course_router
 from .generate_pdf_question_file import router as generate_pdf_question_file_router
@@ -22,6 +23,7 @@ routes = [
     lecture_router,
     community_router,
     ai_router,
+    chat_router,
     user_generated_question_router,
     quiz_source_router,
     analytics_router,

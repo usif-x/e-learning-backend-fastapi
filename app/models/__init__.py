@@ -5,6 +5,7 @@ Import all models and setup relationships
 
 from .admin import Admin
 from .category import Category
+from .chat_session import ChatMessage, ChatSession
 from .comment import Comment
 from .community import Community
 from .community_member import CommunityMember

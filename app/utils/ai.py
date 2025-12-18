@@ -407,6 +407,62 @@ class AIService:
                 detail=f"Failed to parse AI response. Model: {self.model}, Error: {str(e)}",
             )
 
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ):
+        """
+        Stream a multi-turn conversation with AI (generator for SSE)
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            temperature: Controls randomness (0.0 to 2.0)
+            max_tokens: Maximum tokens in response
+
+        Yields:
+            Chunks of the AI's response message
+        """
+        if not self.is_configured():
+            raise HTTPException(
+                status_code=500,
+                detail="AI service is not configured. Please check API key and endpoint.",
+            )
+
+        try:
+            # Create streaming completion
+            stream = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+
+            # Stream chunks
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        yield delta.content
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"AI streaming error: {error_msg}")
+
+            if "timeout" in error_msg.lower():
+                raise HTTPException(
+                    status_code=504, detail="AI service request timed out"
+                )
+            elif "rate limit" in error_msg.lower():
+                raise HTTPException(status_code=429, detail="Rate limit exceeded")
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to stream from AI service: {error_msg}",
+                )
+
     async def generate_questions(
         self,
         topic: str,
@@ -1862,6 +1918,555 @@ Return ONLY a JSON object with this exact structure:
             "language": "Egyptian Arabic",
             "medical_terms_preserved": True,
         }
+
+    async def generate_teaching_greeting(
+        self,
+        content_preview: str,
+        language: str = "en",
+        user_name: str = None,
+    ) -> str:
+        """
+        Generate an initial greeting message for a teaching chat session
+
+        Args:
+            content_preview: Preview of the content to teach
+            language: Language for the greeting (en or ar)
+            user_name: Student's full name for personalization (optional)
+
+        Returns:
+            Greeting message from the AI teacher
+        """
+        if language == "ar":
+            student_name_instruction = (
+                f"\n\nاسم الطالب: {user_name}\nاستخدم اسم الطالب في الترحيب."
+                if user_name
+                else ""
+            )
+            system_message = f"""أنت معلم خبير ودود. مهمتك هي الترحيب بالطالب وبدء جلسة تعليمية تفاعلية.{student_name_instruction}
+
+قواعد مهمة:
+- رحب بالطالب بطريقة ودية
+- اشرح أنك ستساعده في فهم المحتوى
+- اسأل سؤالًا بسيطًا أو متوسطًا عن المحتوى للبدء
+- احتفظ بالمصطلحات الطبية والعلمية باللغة الإنجليزية مع الشرح بالعربية المصرية
+- استخدم **نجمتين** حول المصطلحات الطبية
+
+أسلوب التحية:
+- طبيعي وودي
+- محفز ومشجع
+- مباشر للموضوع"""
+
+            prompt = f"""رحب بالطالب واسأله سؤالًا عن هذا المحتوى:
+
+{content_preview}
+
+ابدأ بترحيب قصير ثم اطرح سؤالًا واحدًا لاختبار الفهم الأساسي."""
+
+        else:  # English
+            student_name_instruction = (
+                f"\n\nStudent's name: {user_name}\nUse the student's name in the greeting."
+                if user_name
+                else ""
+            )
+            system_message = f"""You are a friendly expert teacher. Your task is to welcome the student and start an interactive learning session.{student_name_instruction}
+
+Important rules:
+- Greet the student in a friendly manner
+- Explain that you'll help them understand the content
+- Ask a simple to medium difficulty question about the content to start
+- Keep medical and scientific terms in English and **bold them**
+- Be encouraging and supportive
+
+Greeting style:
+- Natural and friendly
+- Motivating and encouraging
+- Straight to the topic"""
+
+            prompt = f"""Welcome the student and ask them a question about this content:
+
+{content_preview}
+
+Start with a brief welcome, then ask ONE question to test basic understanding."""
+
+        return await self.generate_completion(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=0.7,
+            max_tokens=500,
+        )
+
+    async def generate_teaching_response(
+        self,
+        user_message: str,
+        source_content: str,
+        conversation_history: List[Dict[str, str]],
+        language: str = "en",
+        user_name: str = None,
+    ) -> str:
+        """
+        Generate a teaching response using RAG (Retrieval Augmented Generation)
+
+        Args:
+            user_message: The user's current message
+            source_content: The source content to teach from
+            conversation_history: Previous conversation messages
+            language: Language for the response (en or ar)
+            user_name: Student's full name for personalization (optional)
+
+        Returns:
+            AI teacher's response
+        """
+        # Truncate source content if too long
+        max_content_length = 6000
+        truncated_content = source_content[:max_content_length]
+        if len(source_content) > max_content_length:
+            truncated_content += "\n\n[Content truncated...]"
+
+        if language == "ar":
+            student_name_instruction = (
+                f"\n\n👤 اسم الطالب: {user_name}\nاستخدم اسم الطالب بشكل طبيعي في المحادثة لجعلها أكثر شخصية وودية."
+                if user_name
+                else ""
+            )
+            system_message = f"""أنت معلم خبير تساعد الطالب على فهم المحتوى من خلال محادثة تفاعلية.{student_name_instruction}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 دورك كمعلم
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **الإجابة على الأسئلة**: استخدم المحتوى المتاح للإجابة بدقة
+2. **الشرح عند عدم المعرفة**: إذا لم يعرف الطالب الإجابة، اشرح النقطة بوضوح
+3. **طرح أسئلة المتابعة**: اسأل أسئلة لاختبار الفهم
+4. **التوجيه**: اسأل الطالب إذا كان يريد:
+   - الاستمرار في الأسئلة
+   - شرح نقاط معينة بالتفصيل
+   - مراجعة أجزاء من المحتوى
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 قواعد مهمة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ احتفظ بالمصطلحات الطبية والعلمية بالإنجليزية
+✓ استخدم **نجمتين** حول المصطلحات الطبية
+✓ اشرح بالعربية المصرية البسيطة
+✓ كن ودودًا ومشجعًا
+✓ إذا لم يكن المحتوى المتاح كافيًا، قل ذلك بوضوح
+✓ لا تخترع معلومات غير موجودة في المحتوى
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ قواعد تقييم الإجابات (مهم جداً)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+عند سؤال الطالب:
+
+❌ لا تقبل إجابات مبهمة مثل:
+   - "أيوة أنا عارف"
+   - "نعم أعرف الإجابة"
+   - "طبعاً"
+   - "أكيد"
+   - "بالتأكيد"
+   - "فاهم"
+
+✅ اقبل فقط:
+   1. إجابة محددة تحتوي على المعلومة الصحيحة
+   2. "مش عارف" أو "لا أعرف" أو ما يشبهها
+
+🔄 إذا أجاب الطالب بشكل مبهم:
+   - قل له بلطف: "عظيم! بس عايزك تقولي الإجابة بالتحديد. إيه الإجابة؟"
+   - كرر نفس السؤال
+   - لا تنتقل لسؤال جديد حتى يجيب بشكل محدد أو يقول "مش عارف"
+
+✏️ تصحيح الأخطاء الإملائية:
+   - إذا كتب الطالب كلمة بشكل خاطئ لكن المفهوم صحيح:
+     * اقبل الإجابة واعتبرها صحيحة
+     * نبّه بلطف على الخطأ الإملائي
+     * مثال: "ممتاز! الإجابة صحيحة. ✓ بس ملحوظة بسيطة: الكتابة الصحيحة هي **BiConcave** مش Bycancave"
+   - إذا كان الخطأ الإملائي يغير المعنى تماماً، وضح الفرق
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 تدفق المحادثة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. أجب على سؤال الطالب أو قيّم إجابته
+2. إذا أجاب بشكل صحيح ومحدد: امدحه واشرح المزيد ثم انتقل لسؤال جديد
+3. إذا أجاب بشكل مبهم (مثل "أيوة عارف"): اطلب منه الإجابة المحددة وكرر نفس السؤال
+4. إذا أجاب بشكل خاطئ أو قال "مش عارف": اشرح الإجابة الصحيحة ثم اسأل سؤال جديد
+
+مثال للأسئلة التوجيهية:
+- "هل تحب نكمل في أسئلة تانية؟"
+- "في نقطة معينة عايز أشرحها أكتر؟"
+- "جاهز للسؤال التالي؟"
+"""
+
+            prompt = f"""المحتوى المصدر:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{truncated_content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+رسالة الطالب الحالية: {user_message}
+
+رد كمعلم بناءً على المحتوى والمحادثة السابقة. احتفظ بالمصطلحات الطبية بالإنجليزية مع وضع **نجمتين** حولها."""
+
+        else:  # English
+            student_name_instruction = (
+                f"\n\n👤 Student's Name: {user_name}\nUse the student's name naturally in the conversation to make it more personal and friendly."
+                if user_name
+                else ""
+            )
+            system_message = f"""You are an expert teacher helping the student understand content through interactive conversation.{student_name_instruction}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 Your Role as Teacher
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **Answer Questions**: Use the available content to answer accurately
+2. **Explain When Unknown**: If student doesn't know, explain the point clearly
+3. **Ask Follow-up Questions**: Test understanding with questions
+4. **Provide Guidance**: Ask the student if they want to:
+   - Continue with more questions
+   - Explain specific points in detail
+   - Review parts of the content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Important Rules
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Keep medical and scientific terms in English
+✓ **Bold** medical terms with asterisks
+✓ Explain in simple, clear English
+✓ Be friendly and encouraging
+✓ If available content is insufficient, say so clearly
+✓ Don't make up information not in the content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Answer Validation Rules (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When asking the student a question:
+
+❌ Do NOT accept vague responses like:
+   - "Yes I know it"
+   - "Of course"
+   - "Sure"
+   - "Definitely"
+   - "I understand"
+   - "Yeah I got it"
+
+✅ Only accept:
+   1. A specific answer containing the actual information
+   2. "I don't know" or similar explicit admission
+
+🔄 If student gives a vague response:
+   - Politely say: "Great! But I need you to tell me the specific answer. What is it?"
+   - Repeat the same question
+   - Do NOT move to a new question until they provide specific answer or say "I don't know"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+� Progressive Difficulty (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 Make questions progressively harder based on performance:
+
+✅ When answer is correct:
+   - Praise the student
+   - Elaborate with more details
+   - Ask a HARDER question about same topic:
+     * "Why does this happen?" instead of "What is it?"
+     * Clinical cases and practical applications
+     * Connect multiple concepts
+     * Analysis and comparisons
+
+❌ When answer is wrong:
+   - Explain the correct answer
+   - Ask a SIMPLE or MEDIUM question about another topic
+   - Do NOT increase difficulty after mistakes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 Conversation Flow
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Respond to student's question or evaluate their answer
+2. If correct and specific answer: Praise, elaborate, then ask HARDER question
+3. If vague answer (like "Yes I know"): Ask for specific answer and repeat same question
+4. If wrong or says "I don't know": Explain the correct answer, then ask SIMPLE question
+
+Example guidance questions:
+- "Would you like to continue with more questions?"
+- "Is there any specific point you'd like me to explain further?"
+- "Ready for the next question?"
+"""
+
+            prompt = f"""Source Content:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{truncated_content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Current student message: {user_message}
+
+Respond as a teacher based on the content and previous conversation. Keep medical terms in English and **bold them**."""
+
+        # Build conversation context (last 10 messages to avoid context overflow)
+        recent_history = (
+            conversation_history[-10:]
+            if len(conversation_history) > 10
+            else conversation_history
+        )
+
+        messages = [{"role": "system", "content": system_message}]
+
+        # Add conversation history
+        for msg in recent_history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # Add current prompt
+        messages.append({"role": "user", "content": prompt})
+
+        return await self.chat(
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000,
+        )
+
+    async def generate_teaching_response_stream(
+        self,
+        user_message: str,
+        source_content: str,
+        conversation_history: List[Dict[str, str]],
+        language: str = "en",
+        user_name: str = None,
+    ):
+        """
+        Stream a teaching response using RAG (Retrieval Augmented Generation)
+
+        Args:
+            user_message: The user's current message
+            source_content: The source content to teach from
+            conversation_history: Previous conversation messages
+            language: Language for the response (en or ar)
+            user_name: Student's full name for personalization (optional)
+
+        Yields:
+            Chunks of the AI teacher's response
+        """
+        # Truncate source content if too long
+        max_content_length = 6000
+        truncated_content = source_content[:max_content_length]
+        if len(source_content) > max_content_length:
+            truncated_content += "\n\n[Content truncated...]"
+
+        if language == "ar":
+            student_name_instruction = (
+                f"\n\n👤 اسم الطالب: {user_name}\nاستخدم اسم الطالب بشكل طبيعي في المحادثة لجعلها أكثر شخصية وودية."
+                if user_name
+                else ""
+            )
+            system_message = f"""أنت معلم خبير تساعد الطالب على فهم المحتوى من خلال محادثة تفاعلية.{student_name_instruction}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 دورك كمعلم
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **الإجابة على الأسئلة**: استخدم المحتوى المتاح للإجابة بدقة
+2. **الشرح عند عدم المعرفة**: إذا لم يعرف الطالب الإجابة، اشرح النقطة بوضوح
+3. **طرح أسئلة المتابعة**: اسأل أسئلة لاختبار الفهم
+4. **التوجيه**: اسأل الطالب إذا كان يريد:
+   - الاستمرار في الأسئلة
+   - شرح نقاط معينة بالتفصيل
+   - مراجعة أجزاء من المحتوى
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 قواعد مهمة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ احتفظ بالمصطلحات الطبية والعلمية بالإنجليزية
+✓ استخدم **نجمتين** حول المصطلحات الطبية
+✓ اشرح بالعربية المصرية البسيطة
+✓ كن ودودًا ومشجعًا
+✓ إذا لم يكن المحتوى المتاح كافيًا، قل ذلك بوضوح
+✓ لا تخترع معلومات غير موجودة في المحتوى
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ قواعد تقييم الإجابات (مهم جداً)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+عند سؤال الطالب:
+
+❌ لا تقبل إجابات مبهمة مثل:
+   - "أيوة أنا عارف"
+   - "نعم أعرف الإجابة"
+   - "طبعاً"
+   - "أكيد"
+   - "بالتأكيد"
+   - "فاهم"
+
+✅ اقبل فقط:
+   1. إجابة محددة تحتوي على المعلومة الصحيحة
+   2. "مش عارف" أو "لا أعرف" أو ما يشبهها
+
+🔄 إذا أجاب الطالب بشكل مبهم:
+   - قل له بلطف: "عظيم! بس عايزك تقولي الإجابة بالتحديد. إيه الإجابة؟"
+   - كرر نفس السؤال
+   - لا تنتقل لسؤال جديد حتى يجيب بشكل محدد أو يقول "مش عارف"
+
+✏️ تصحيح الأخطاء الإملائية:
+   - إذا كتب الطالب كلمة بشكل خاطئ لكن المفهوم صحيح:
+     * اقبل الإجابة واعتبرها صحيحة
+     * نبّه بلطف على الخطأ الإملائي
+     * مثال: "ممتاز! الإجابة صحيحة. ✓ بس ملحوظة بسيطة: الكتابة الصحيحة هي **BiConcave** مش Bycancave"
+   - إذا كان الخطأ الإملائي يغير المعنى تماماً، وضح الفرق
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 تدفق المحادثة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. أجب على سؤال الطالب أو قيّم إجابته
+2. إذا أجاب بشكل صحيح ومحدد: امدحه واشرح المزيد ثم انتقل لسؤال جديد
+3. إذا أجاب بشكل مبهم (مثل "أيوة عارف"): اطلب منه الإجابة المحددة وكرر نفس السؤال
+4. إذا أجاب بشكل خاطئ أو قال "مش عارف": اشرح الإجابة الصحيحة ثم اسأل سؤال جديد
+
+مثال للأسئلة التوجيهية:
+- "هل تحب نكمل في أسئلة تانية؟"
+- "في نقطة معينة عايز أشرحها أكتر؟"
+- "جاهز للسؤال التالي؟"
+"""
+
+            prompt = f"""المحتوى المصدر:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{truncated_content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+رسالة الطالب الحالية: {user_message}
+
+رد كمعلم بناءً على المحتوى والمحادثة السابقة. احتفظ بالمصطلحات الطبية بالإنجليزية مع وضع **نجمتين** حولها."""
+
+        else:  # English
+            student_name_instruction = (
+                f"\n\n👤 Student's Name: {user_name}\nUse the student's name naturally in the conversation to make it more personal and friendly."
+                if user_name
+                else ""
+            )
+            system_message = f"""You are an expert teacher helping the student understand content through interactive conversation.{student_name_instruction}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 Your Role as Teacher
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **Answer Questions**: Use the available content to answer accurately
+2. **Explain When Unknown**: If student doesn't know, explain the point clearly
+3. **Ask Follow-up Questions**: Test understanding with questions
+4. **Provide Guidance**: Ask the student if they want to:
+   - Continue with more questions
+   - Explain specific points in detail
+   - Review parts of the content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Important Rules
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Keep medical and scientific terms in English
+✓ **Bold** medical terms with asterisks
+✓ Explain in simple, clear English
+✓ Be friendly and encouraging
+✓ If available content is insufficient, say so clearly
+✓ Don't make up information not in the content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Answer Validation Rules (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When asking the student a question:
+
+❌ Do NOT accept vague responses like:
+   - "Yes I know it"
+   - "Of course"
+   - "Sure"
+   - "Definitely"
+   - "I understand"
+   - "Yeah I got it"
+
+✅ Only accept:
+   1. A specific answer containing the actual information
+   2. "I don't know" or similar explicit admission
+
+🔄 If student gives a vague response:
+   - Politely say: "Great! But I need you to tell me the specific answer. What is it?"
+   - Repeat the same question
+   - Do NOT move to a new question until they provide specific answer or say "I don't know"
+
+✏️ Spelling Correction:
+   - If the student writes a word incorrectly but the concept is right:
+     * Accept the answer as correct
+     * Gently note the spelling error
+     * Example: "Excellent! Your answer is correct. ✓ Just a small note: the correct spelling is **BiConcave** not Bycancave"
+   - If the spelling error completely changes the meaning, clarify the difference
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+� Progressive Difficulty (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 Make questions progressively harder based on performance:
+
+✅ When answer is correct:
+   - Praise the student
+   - Elaborate with more details
+   - Ask a HARDER question about same topic:
+     * "Why does this happen?" instead of "What is it?"
+     * Clinical cases and practical applications
+     * Connect multiple concepts
+     * Analysis and comparisons
+
+❌ When answer is wrong:
+   - Explain the correct answer
+   - Ask a SIMPLE or MEDIUM question about another topic
+   - Do NOT increase difficulty after mistakes
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 Conversation Flow
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Respond to student's question or evaluate their answer
+2. If correct and specific answer: Praise, elaborate, then ask HARDER question
+3. If vague answer (like "Yes I know"): Ask for specific answer and repeat same question
+4. If wrong or says "I don't know": Explain the correct answer, then ask SIMPLE question
+
+Example guidance questions:
+- "Would you like to continue with more questions?"
+- "Is there any specific point you'd like me to explain further?"
+- "Ready for the next question?"
+"""
+
+            prompt = f"""Source Content:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{truncated_content}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Current student message: {user_message}
+
+Respond as a teacher based on the content and previous conversation. Keep medical terms in English and **bold them**."""
+
+        # Build conversation context (last 10 messages to avoid context overflow)
+        recent_history = (
+            conversation_history[-10:]
+            if len(conversation_history) > 10
+            else conversation_history
+        )
+
+        messages = [{"role": "system", "content": system_message}]
+
+        # Add conversation history
+        for msg in recent_history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # Add current prompt
+        messages.append({"role": "user", "content": prompt})
+
+        # Stream the response
+        async for chunk in self.chat_stream(
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000,
+        ):
+            yield chunk
 
     async def explain_topic_content(
         self,
