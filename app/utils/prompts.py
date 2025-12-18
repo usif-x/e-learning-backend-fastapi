@@ -1483,3 +1483,124 @@ Requirements:
 - **Essay Answers**: Keep them very short (2-3 sentences max).
 - Return ONLY the JSON.
 """
+
+
+# ============================================
+# IMAGE-BASED QUESTION PROMPTS
+# ============================================
+
+
+def get_image_question_system_message() -> str:
+    """System message for image-based question generation"""
+    return """You are an elite educational assessment designer specializing in visual learning materials.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 IMAGE-BASED QUESTION GENERATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Your task is to create questions that test understanding of diagrams, charts, and visual content.
+
+IMPORTANT GUIDELINES:
+1. Use the image text (OCR extracted labels/text from the image)
+2. Use the full page context for deeper understanding
+3. Create questions that require visual comprehension
+4. Questions should reference specific parts of the image
+5. Ensure questions are meaningful and educational
+
+QUESTION TYPES:
+• Identification: "What structure is labeled as X?"
+• Function: "What is the function of the labeled Y?"
+• Relationship: "How does structure A relate to structure B?"
+• Analysis: "Based on the diagram, what would happen if...?"
+
+OUTPUT FORMAT:
+{
+  "questions": [
+    {
+      "question_type": "image",
+      "question_category": "standard|critical|linking",
+      "question_text": "Question referencing the image",
+      "options": ["A", "B", "C", "D"],
+      "correct_answer": "B",
+      "explanation": "Why this answer is correct",
+      "explanation_ar": "Explanation in Egyptian Arabic"
+    }
+  ]
+}
+
+NOTE: Do NOT include the image in your response. The image will be added automatically.
+
+QUALITY REQUIREMENTS:
+✓ Questions must be clear and specific
+✓ Reference actual content from image text
+✓ Use page context for richer questions
+✓ Avoid ambiguous or trivial questions
+✓ Maintain proper difficulty level"""
+
+
+def get_image_question_prompt(
+    image_text: str,
+    page_text: str,
+    page_number: int,
+    difficulty: str,
+    count: int = 1,
+) -> str:
+    """
+    Generate prompt for creating questions from an image
+
+    Args:
+        image_text: OCR extracted text from the image
+        page_text: Full text content of the page
+        page_number: Page number where image was found
+        difficulty: Question difficulty level
+        count: Number of questions to generate per image
+
+    Returns:
+        Formatted prompt string
+    """
+    difficulty_guides = {
+        "easy": "EASY: Simple identification and recall from the image labels",
+        "medium": "MEDIUM: Understanding relationships and functions shown in the image",
+        "hard": "HARD: Analysis, synthesis, and application of concepts from the image",
+    }
+
+    current_difficulty = difficulty_guides.get(difficulty, difficulty_guides["medium"])
+
+    return f"""Generate {count} high-quality educational question(s) based on this image from page {page_number}.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 IMAGE CONTENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TEXT EXTRACTED FROM IMAGE (Labels, Annotations):
+{image_text}
+
+FULL PAGE CONTEXT:
+{page_text[:1000]}{"..." if len(page_text) > 1000 else ""}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ GENERATION PARAMETERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Difficulty: {current_difficulty}
+Questions to Generate: {count}
+Question Type: Multiple Choice (image-based)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 INSTRUCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Create questions that reference specific elements from the image text
+2. Use the page context to create more meaningful questions
+3. Ensure questions test visual comprehension
+4. Include 4 plausible options (A, B, C, D)
+5. Provide clear explanations for the correct answer
+6. Include Egyptian Arabic explanation with English medical terms
+
+EXAMPLE QUESTION PATTERNS:
+✓ "According to the diagram, what is [structure/label]?"
+✓ "Based on the labeled image, what is the function of [component]?"
+✓ "The image shows [X]. How does it relate to [Y]?"
+✓ "What would happen if [element from image] was affected?"
+
+Return ONLY valid JSON. DO NOT include ```json``` markers."""

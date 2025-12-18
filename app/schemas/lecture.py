@@ -24,6 +24,15 @@ class QuizQuestion(BaseModel):
         None,
         description="Cognitive level (remember|understand|apply|analyze|evaluate|create)",
     )
+    image: Optional[str] = Field(
+        None, description="Base64 encoded image for the question"
+    )
+    content_page_number: Optional[int] = Field(
+        None, description="Page number from source PDF"
+    )
+    question_type: Optional[str] = Field(
+        "text", description="Type of question (text|image)"
+    )
 
 
 class QuizQuestionForAttempt(BaseModel):
@@ -33,6 +42,8 @@ class QuizQuestionForAttempt(BaseModel):
     options: List[str]
     question_category: Optional[str] = None
     cognitive_level: Optional[str] = None
+    image: Optional[str] = None
+    question_type: Optional[str] = "text"
 
 
 class QuizQuestionWithResult(BaseModel):
@@ -47,6 +58,9 @@ class QuizQuestionWithResult(BaseModel):
     explanation_ar: Optional[str] = None
     question_category: Optional[str] = None
     cognitive_level: Optional[str] = None
+    image: Optional[str] = None
+    content_page_number: Optional[int] = None
+    question_type: Optional[str] = "text"
 
 
 class LectureContentBase(BaseModel):

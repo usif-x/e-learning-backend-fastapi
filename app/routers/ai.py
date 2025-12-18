@@ -358,6 +358,82 @@ async def explain_pdf_content(
     }
 
 
+@router.post("/generate-mixed-questions-from-pdf")
+async def generate_mixed_questions_from_pdf(
+    file: UploadFile = File(...),
+    difficulty: str = Form("medium"),
+    total_count: int = Form(20),
+    question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
+    image_percentage: float = Form(0.15),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate mixed questions from PDF: 85% normal + 15% image-based questions
+
+    This endpoint processes the PDF in two steps:
+    1. Generates normal text-based questions (85%)
+    2. Extracts images and generates image-based questions one-by-one (15%)
+    3. Merges both types and returns combined results
+
+    Args:
+        file: PDF file to process
+        difficulty: Question difficulty (easy, medium, hard)
+        total_count: Total number of questions to generate (5-30 for users)
+        question_type: Type for normal questions (multiple_choice, true_false, mixed)
+        notes: Optional custom instructions
+        previous_questions: Optional list of previously generated questions to avoid
+        image_percentage: Percentage of image questions (0.10-0.20, default: 0.15)
+        current_user: Authenticated user
+
+    Returns:
+        Combined normal and image-based questions with embedded base64 images
+    """
+    if total_count < 5 or total_count > 30:
+        raise HTTPException(
+            status_code=400, detail="Total count must be between 5 and 30"
+        )
+
+    if difficulty not in ["easy", "medium", "hard"]:
+        raise HTTPException(
+            status_code=400, detail="Difficulty must be easy, medium, or hard"
+        )
+
+    if question_type not in ["multiple_choice", "true_false", "mixed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid question type. Choose: multiple_choice, true_false, mixed",
+        )
+
+    if image_percentage < 0.10 or image_percentage > 0.20:
+        raise HTTPException(
+            status_code=400,
+            detail="Image percentage must be between 0.10 (10%) and 0.20 (20%)",
+        )
+
+    result = await ai_service.generate_questions_with_images_from_pdf(
+        file=file,
+        difficulty=difficulty,
+        total_count=total_count,
+        question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
+        image_percentage=image_percentage,
+        max_image_size=600,
+        image_quality=40,
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "total_generated": result["total_count"],
+        "normal_questions": result["normal_count"],
+        "image_questions": result["image_count"],
+        "questions": result["questions"],
+    }
+
+
 @router.post("/explain-topic-content")
 async def explain_topic_content(
     topic: str = Form(...),
@@ -439,5 +515,82 @@ async def admin_explain_topic_content(
         "subjects": explanation_result["subjects"],
         "language": explanation_result["language"],
         "medical_terms_preserved": explanation_result["medical_terms_preserved"],
+        "admin_id": current_admin.id,
+    }
+
+
+@router.post("/admin/generate-mixed-questions-from-pdf")
+async def admin_generate_mixed_questions_from_pdf(
+    file: UploadFile = File(...),
+    difficulty: str = Form("medium"),
+    total_count: int = Form(20),
+    question_type: str = Form("multiple_choice"),
+    notes: Optional[str] = Form(None),
+    previous_questions: Optional[List[str]] = Body(None),
+    image_percentage: float = Form(0.15),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    """
+    Admin endpoint to generate mixed questions from PDF: 85% normal + 15% image-based
+
+    Process:
+    1. Generates normal text-based questions (85%)
+    2. Extracts images and generates image-based questions one-by-one (15%)
+    3. Merges both types and returns combined results
+
+    Args:
+        file: PDF file to process
+        difficulty: Question difficulty (easy, medium, hard)
+        total_count: Total number of questions to generate (5-100 for admins)
+        question_type: Type for normal questions (multiple_choice, true_false, mixed)
+        notes: Optional custom instructions
+        previous_questions: Optional list of previously generated questions to avoid
+        image_percentage: Percentage of image questions (0.10-0.20, default: 0.15)
+        current_admin: Authenticated admin
+
+    Returns:
+        Combined normal and image-based questions with embedded base64 images
+    """
+    if total_count < 5 or total_count > 100:
+        raise HTTPException(
+            status_code=400, detail="Total count must be between 5 and 100"
+        )
+
+    if difficulty not in ["easy", "medium", "hard"]:
+        raise HTTPException(
+            status_code=400, detail="Difficulty must be easy, medium, or hard"
+        )
+
+    if question_type not in ["multiple_choice", "true_false", "mixed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid question type. Choose: multiple_choice, true_false, mixed",
+        )
+
+    if image_percentage < 0.10 or image_percentage > 0.20:
+        raise HTTPException(
+            status_code=400,
+            detail="Image percentage must be between 0.10 (10%) and 0.20 (20%)",
+        )
+
+    result = await ai_service.generate_questions_with_images_from_pdf(
+        file=file,
+        difficulty=difficulty,
+        total_count=total_count,
+        question_type=question_type,
+        notes=notes,
+        previous_questions=previous_questions,
+        image_percentage=image_percentage,
+        max_image_size=600,
+        image_quality=40,
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "total_generated": result["total_count"],
+        "normal_questions": result["normal_count"],
+        "image_questions": result["image_count"],
+        "questions": result["questions"],
         "admin_id": current_admin.id,
     }
