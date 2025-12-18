@@ -164,8 +164,9 @@ def get_chat_session(
     )
 
 
-@router.patch(
+@router.api_route(
     "/sessions/{session_id}",
+    methods=["PATCH", "PUT"],
     response_model=ChatSessionResponse,
     summary="Update chat session",
     description="Update chat session properties",
