@@ -1397,6 +1397,7 @@ class AIService:
         conversation_history: List[Dict[str, str]],
         language: str = "en",
         user_name: str = None,
+        session_type: str = "asking",
     ):
         """
         Stream a teaching response using RAG (Retrieval Augmented Generation)
@@ -1417,8 +1418,6 @@ class AIService:
         if len(source_content) > max_content_length:
             truncated_content += "\n\n[Content truncated...]"
 
-        # Use "asking" session type for streaming response as it implies interactive conversation
-        session_type = "asking"
         system_message = get_teaching_response_system_message(
             language, user_name, session_type
         )
