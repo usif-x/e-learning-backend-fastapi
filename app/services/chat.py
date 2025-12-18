@@ -93,6 +93,10 @@ class ChatService:
             )
 
         # Create the session with extracted content
+        logger.info(
+            f"[Service] Creating ChatSession with session_type: '{session_data.session_type}'"
+        )
+
         chat_session = ChatSession(
             user_id=user_id,
             title=session_data.title,
@@ -101,9 +105,24 @@ class ChatService:
             session_type=session_data.session_type,
         )
 
+        logger.info(
+            f"[Service] ChatSession object created, session_type before add: '{chat_session.session_type}'"
+        )
+
         db.add(chat_session)
+        logger.info(
+            f"[Service] ChatSession added to session, session_type: '{chat_session.session_type}'"
+        )
+
         db.commit()
+        logger.info(
+            f"[Service] After commit, session_type: '{chat_session.session_type}'"
+        )
+
         db.refresh(chat_session)
+        logger.info(
+            f"[Service] After refresh from DB, session_type: '{chat_session.session_type}', ID: {chat_session.id}"
+        )
 
         # Create initial AI greeting message
         await ChatService._create_initial_greeting(db, chat_session)
@@ -584,16 +603,26 @@ class ChatService:
     @staticmethod
     def _to_session_response(session: ChatSession) -> ChatSessionResponse:
         """Convert ChatSession to ChatSessionResponse"""
-        return ChatSessionResponse(
+        logger.info(
+            f"[Service] Converting ChatSession {session.id} to response, session_type from model: '{session.session_type}'"
+        )
+
+        response = ChatSessionResponse(
             id=session.id,
             user_id=session.user_id,
             title=session.title,
             language=session.language,
+            session_type=session.session_type,
             is_active=session.is_active,
             created_at=session.created_at,
             updated_at=session.updated_at,
             message_count=len(session.messages) if session.messages else 0,
         )
+
+        logger.info(
+            f"[Service] Response object created, session_type in response: '{response.session_type}'"
+        )
+        return response
 
     @staticmethod
     def _to_message_response(message: ChatMessage) -> ChatMessageResponse:

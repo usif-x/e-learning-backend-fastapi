@@ -94,18 +94,30 @@ async def create_chat_session_from_pdf(
             detail="Only PDF files are accepted",
         )
 
+    logger.info(
+        f"[PDF Session Create] Form data received - session_type: '{session_type}'"
+    )
+
     session_data = ChatSessionCreateFromPDF(
         title=title,
         language=language,
         session_type=session_type,
     )
 
-    return await chat_service.create_session_from_pdf(
+    logger.info(
+        f"[PDF Session Create] Schema validated - session_type: '{session_data.session_type}'"
+    )
+
+    result = await chat_service.create_session_from_pdf(
         db=db,
         user_id=current_user.id,
         session_data=session_data,
         pdf_file=pdf_file,
     )
+    logger.info(
+        f"[PDF Session Create] Response will send - session_type: '{result.session_type}'"
+    )
+    return result
 
 
 @router.get(
