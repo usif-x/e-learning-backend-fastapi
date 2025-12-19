@@ -103,6 +103,7 @@ class UserGeneratedQuestionService:
         count: int,
         is_public: bool,
         notes: Optional[str] = None,
+        use_images: bool = False,
     ) -> UserGeneratedQuestion:
         """
         Generate questions from PDF using AI and save to database
@@ -122,14 +123,25 @@ class UserGeneratedQuestionService:
         )
 
         # Generate questions using AI
-        result = await ai_service.generate_questions_from_pdf(
-            file=file,
-            difficulty=difficulty,
-            count=count,
-            question_type=question_type,
-            notes=notes,
-            previous_questions=None,  # First generation
-        )
+        if use_images:
+            result = await ai_service.generate_questions_with_images_from_pdf(
+                file=file,
+                difficulty=difficulty,
+                total_count=count,  # Note: argument name is different in image generator
+                question_type=question_type,
+                notes=notes,
+                previous_questions=None,  # First generation
+                image_percentage=0.2,  # allocate 20% for images
+            )
+        else:
+            result = await ai_service.generate_questions_from_pdf(
+                file=file,
+                difficulty=difficulty,
+                count=count,
+                question_type=question_type,
+                notes=notes,
+                previous_questions=None,  # First generation
+            )
 
         questions = result.get("questions", [])
 
@@ -191,6 +203,7 @@ class UserGeneratedQuestionService:
         user_id: int,
         count: int,
         notes: Optional[str] = None,
+        use_images: bool = False,
     ) -> UserGeneratedQuestion:
         """
         Add more questions to existing set, AI will avoid duplicates
@@ -270,14 +283,25 @@ class UserGeneratedQuestionService:
                     )
 
                     # Generate questions from the actual PDF content
-                    result = await ai_service.generate_questions_from_pdf(
-                        file=pdf_file_like,
-                        difficulty=question_set.difficulty,
-                        count=count,
-                        question_type=question_set.question_type,
-                        notes=notes,
-                        previous_questions=previous_questions,
-                    )
+                    if use_images:
+                        result = await ai_service.generate_questions_with_images_from_pdf(
+                            file=pdf_file_like,
+                            difficulty=question_set.difficulty,
+                            total_count=count,
+                            question_type=question_set.question_type,
+                            notes=notes,
+                            previous_questions=previous_questions,
+                            image_percentage=0.2,
+                        )
+                    else:
+                        result = await ai_service.generate_questions_from_pdf(
+                            file=pdf_file_like,
+                            difficulty=question_set.difficulty,
+                            count=count,
+                            question_type=question_set.question_type,
+                            notes=notes,
+                            previous_questions=previous_questions,
+                        )
                 else:
                     # PDF file not found, fall back to topic-based generation
                     result = await ai_service.generate_questions(

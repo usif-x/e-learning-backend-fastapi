@@ -51,6 +51,9 @@ class AddMoreQuestionsRequest(BaseModel):
         default=5, ge=1, le=20, description="Number of additional questions"
     )
     notes: Optional[str] = Field(None, description="Additional instructions for AI")
+    use_images: bool = Field(
+        default=False, description="Whether to extract and use images from PDF"
+    )
 
 
 # ==================== Response Schemas ====================
@@ -72,6 +75,7 @@ class QuestionDetail(BaseModel):
         None,
         description="Cognitive level: remember, understand, apply, analyze, evaluate, create",
     )
+    image: Optional[str] = Field(None, description="Base64 encoded image for image-based questions")
 
 
 class UserGeneratedQuestionResponse(BaseModel):
@@ -179,6 +183,7 @@ class QuestionWithResult(BaseModel):
     is_correct: Optional[bool]
     explanation_en: Optional[str]
     explanation_ar: Optional[str]
+    image: Optional[str] = None
 
 
 class AttemptResultResponse(BaseModel):

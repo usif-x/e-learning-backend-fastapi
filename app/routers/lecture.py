@@ -450,6 +450,8 @@ def start_quiz_attempt(
                 {
                     "question": question["question"],
                     "options": question["options"],
+                    "image": question.get("image"),
+                    "question_type": question.get("question_type", "text"),
                 }
             )
 
@@ -573,6 +575,8 @@ def resume_quiz_attempt(
                 {
                     "question": question["question"],
                     "options": question["options"],
+                    "image": question.get("image"),
+                    "question_type": question.get("question_type", "text"),
                 }
             )
 
@@ -676,6 +680,8 @@ def submit_quiz_attempt(
                 "is_correct": is_correct,
                 "explanation_en": question.get("explanation_en"),
                 "explanation_ar": question.get("explanation_ar"),
+                "image": question.get("image"),
+                "question_type": question.get("question_type", "text"),
             }
             questions_with_results.append(result)
 
@@ -834,6 +840,9 @@ async def generate_quiz_from_pdf(
     previous_questions: Optional[List[str]] = Query(
         None, description="Previously generated questions to avoid"
     ),
+    use_images: bool = Query(
+        False, description="Whether to extract and use images from PDF"
+    ),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin),
 ):
@@ -848,6 +857,7 @@ async def generate_quiz_from_pdf(
     Optional parameters:
     - notes: Custom instructions (e.g., "Focus on practical applications", "Avoid topic X")
     - previous_questions: List of previously generated question texts to avoid duplicates
+    - use_images: Check for content in images (default: False)
     """
     if not ai_service.is_configured():
         raise HTTPException(
@@ -887,15 +897,28 @@ async def generate_quiz_from_pdf(
             uploaded_by=current_admin.id,
         )
 
-        # Generate questions from PDF using AI with mixed types (MCQ + True/False)
-        result = await ai_service.generate_questions_from_pdf(
-            file=file,
-            difficulty=difficulty,
-            count=count,
-            question_type="mixed",
-            notes=notes,
-            previous_questions=previous_questions,
-        )
+        # Generate questions
+        if use_images:
+            # When using images, we want mostly text questions but some image ones
+            # Use 20% image questions by default
+            result = await ai_service.generate_questions_with_images_from_pdf(
+                file=file,
+                difficulty=difficulty,
+                total_count=count,  # Note: logic accepts total_count
+                question_type="mixed",
+                notes=notes,
+                previous_questions=previous_questions,
+                image_percentage=0.2,
+            )
+        else:
+            result = await ai_service.generate_questions_from_pdf(
+                file=file,
+                difficulty=difficulty,
+                count=count,
+                question_type="mixed",
+                notes=notes,
+                previous_questions=previous_questions,
+            )
 
         # Parse questions from AI response
         questions = result.get("questions", [])
@@ -940,6 +963,9 @@ async def generate_more_questions_from_source(
     previous_questions: Optional[List[str]] = Query(
         None, description="Previously generated questions to avoid"
     ),
+    use_images: bool = Query(
+        False, description="Whether to extract and use images from PDF"
+    ),
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin),
 ):
@@ -953,6 +979,7 @@ async def generate_more_questions_from_source(
     Optional parameters:
     - notes: Custom instructions (e.g., "Focus on practical applications", "Avoid topic X")
     - previous_questions: List of previously generated question texts to avoid duplicates
+    - use_images: Check for content in images (default: False)
     """
     if not ai_service.is_configured():
         raise HTTPException(
@@ -988,14 +1015,25 @@ async def generate_more_questions_from_source(
 
     try:
         # Generate questions from saved PDF using AI
-        result = await ai_service.generate_questions_from_pdf_path(
-            pdf_path=str(pdf_path),
-            difficulty=difficulty,
-            count=count,
-            question_type="mixed",
-            notes=notes,
-            previous_questions=previous_questions,
-        )
+        if use_images:
+            result = await ai_service.generate_questions_with_images_from_pdf_path(
+                pdf_path=str(pdf_path),
+                difficulty=difficulty,
+                total_count=count,
+                question_type="mixed",
+                notes=notes,
+                previous_questions=previous_questions,
+                image_percentage=0.2,
+            )
+        else:
+            result = await ai_service.generate_questions_from_pdf_path(
+                pdf_path=str(pdf_path),
+                difficulty=difficulty,
+                count=count,
+                question_type="mixed",
+                notes=notes,
+                previous_questions=previous_questions,
+            )
 
         # Parse questions from AI response
         questions = result.get("questions", [])

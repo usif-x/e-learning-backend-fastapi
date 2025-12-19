@@ -117,6 +117,7 @@ async def generate_questions_from_pdf(
     count: int = Form(5, ge=1, le=20),
     is_public: bool = Form(False),
     notes: Optional[str] = Form(None),
+    use_images: bool = Form(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -136,6 +137,7 @@ async def generate_questions_from_pdf(
         count=count,
         is_public=is_public,
         notes=notes,
+        use_images=use_images,
     )
 
     return {
@@ -181,6 +183,7 @@ async def add_more_questions(
         user_id=current_user.id,
         count=body.count,
         notes=body.notes,
+        use_images=body.use_images,
     )
 
     return {
@@ -650,6 +653,7 @@ async def start_question_attempt(
                 "question": q.get("question"),
                 "options": q.get("options", []),
                 "question_type": q.get("question_type", "multiple_choice"),
+                "image": q.get("image"),
             }
         )
 
@@ -704,6 +708,7 @@ async def submit_question_attempt(
                     "is_correct": answer_data.get("is_correct", False),
                     "explanation_en": question.get("explanation_en"),
                     "explanation_ar": question.get("explanation_ar"),
+                    "image": question.get("image"),
                 }
             )
 
@@ -800,6 +805,7 @@ async def get_attempt_detail(
                     "is_correct": answer_data.get("is_correct", False),
                     "explanation_en": question.get("explanation_en"),
                     "explanation_ar": question.get("explanation_ar"),
+                    "image": question.get("image"),
                 }
             )
 
@@ -852,6 +858,7 @@ async def start_guest_attempt(
                 "question": q.get("question"),
                 "options": q.get("options", []),
                 "question_type": q.get("question_type", "multiple_choice"),
+                "image": q.get("image"),
             }
         )
 
@@ -923,6 +930,7 @@ async def submit_guest_attempt(
                     "is_correct": is_correct,
                     "explanation_en": question.get("explanation_en"),
                     "explanation_ar": question.get("explanation_ar"),
+                    "image": question.get("image"),
                 }
             )
 

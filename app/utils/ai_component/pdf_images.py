@@ -480,22 +480,76 @@ class PDFImageGeneratorMixin:
 
             skip_pages = set()
             pages_content = {}
+            pages_with_no_text = []
 
-            # Extract text from all pages
+            # First pass: Extract text from all pages
             for page_num, page in enumerate(doc, 1):
                 try:
                     text = page.get_text()
                     if text and text.strip():
                         pages_content[page_num] = text.strip()
                     else:
-                        skip_pages.add(page_num)
+                        pages_with_no_text.append(page_num)
                 except Exception as e:
                     logger.warning(
                         f"Failed to extract text from page {page_num}: {str(e)}"
                     )
-                    skip_pages.add(page_num)
+                    pages_with_no_text.append(page_num)
 
-            # Apply filtering
+            # Second pass: Use OCR for pages with no text or very short text
+            # This matches logic in app/utils/ai_component/pdf_text.py
+            pages_with_short_text = [
+                p_num for p_num, content in pages_content.items() 
+                if len(content.split()) < 5
+            ]
+            
+            # Combine pages that need OCR
+            pages_needing_ocr = sorted(set(pages_with_no_text) | set(pages_with_short_text))
+            
+            if pages_needing_ocr:
+                logger.info(f"Using OCR for pages: {pages_needing_ocr}")
+                try:
+                    for page_num in pages_needing_ocr:
+                        try:
+                            # Load page (0-indexed)
+                            page = doc.load_page(page_num - 1)
+                            # Get image from page
+                            pix = page.get_pixmap(
+                                matrix=fitz.Matrix(2, 2)
+                            )  # 2x zoom for better OCR
+                            img_data = pix.tobytes("png")
+                            image = Image.open(BytesIO(img_data))
+
+                            # Perform OCR on the image
+                            ocr_text = pytesseract.image_to_string(
+                                image, lang="eng+ara"
+                            )
+                            
+                            if ocr_text and ocr_text.strip():
+                                ocr_text = ocr_text.strip()
+                                # Only use OCR text if it yields substantive content (>= 5 words)
+                                if len(ocr_text.split()) >= 5:
+                                    pages_content[page_num] = ocr_text
+                                    # Remove from no_text list if it was there
+                                    if page_num in pages_with_no_text:
+                                        pages_with_no_text.remove(page_num)
+                                    logger.info(f"Replaced/Added text on page {page_num} with OCR content")
+                                else:
+                                    # Still empty/short after OCR
+                                    if page_num in pages_with_no_text:
+                                        skip_pages.add(page_num)
+                            else:
+                                if page_num in pages_with_no_text:
+                                    skip_pages.add(page_num)
+                        except Exception as e:
+                            logger.warning(f"OCR failed for page {page_num}: {str(e)}")
+                            if page_num in pages_with_no_text:
+                                skip_pages.add(page_num)
+                            continue
+                except Exception as e:
+                     logger.warning(f"Failed to setup OCR: {str(e)}")
+
+            # Apply robust filtering (Title, Keywords, Conclusion)
             skip_keywords = [
                 "thank you",
                 "thanks",
@@ -532,17 +586,33 @@ class PDFImageGeneratorMixin:
 
             for page_num, content in list(pages_content.items()):
                 content_lower = content.lower()
+                
+                # Filter 1: Too short
                 if len(content_lower.split()) < 5:
+                    logger.info(f"Skipping page {page_num}: too short")
                     skip_pages.add(page_num)
                     continue
+
+                # Filter 2: Keywords
+                should_skip = False
                 for keyword in skip_keywords:
                     if keyword.lower() in content_lower:
+                        logger.info(f"Skipping page {page_num}: matches keyword '{keyword}'")
                         skip_pages.add(page_num)
+                        should_skip = True
                         break
+                if should_skip:
+                    continue
+
+                # Filter 3: Title Page (First page with limited content)
                 if page_num == 1 and len(content_lower.split()) < 50:
+                    logger.info(f"Skipping page {page_num}: likely title page")
                     skip_pages.add(page_num)
                     continue
+                
+                # Filter 4: Conclusion/Last Page
                 if page_num == doc.page_count and len(content_lower.split()) < 30:
+                    logger.info(f"Skipping page {page_num}: likely conclusion page")
                     skip_pages.add(page_num)
                     continue
 
@@ -552,7 +622,7 @@ class PDFImageGeneratorMixin:
             valid_pages = sorted(
                 [p for p in pages_content.keys() if p not in skip_pages]
             )
-            logger.info(f"Pages to use: {valid_pages} (skipped: {sorted(skip_pages)})")
+            logger.info(f"Pages to use: {valid_pages} (skipped: {sorted(list(skip_pages))})")
 
             if not valid_pages:
                 raise HTTPException(
@@ -570,10 +640,10 @@ class PDFImageGeneratorMixin:
         finally:
             await file.seek(0)
 
-        # Step 1: Generate normal text-based questions using filtered pages
-        logger.info(
-            f"Step 1/3: Generating {normal_count} normal questions from filtered pages..."
-        )
+        # Step 1: Generate normal text-based questions
+        # Note: We pass the ORIGINAL file. If we wanted to enforce filtering on text questions,
+        # we would need to pass filtered text. Currently, this restricts IMAGE questions to filtered pages.
+
         normal_questions = await self.generate_questions_from_pdf(
             file=file,
             difficulty=difficulty,

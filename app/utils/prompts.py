@@ -262,6 +262,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First question text",
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correct_answer": 2,
@@ -271,6 +272,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second question text",
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correct_answer": 0,
@@ -280,6 +282,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "analyze"
         }},
         {{
+            "question_type": "text",
             "question": "Third question text",
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correct_answer": 3,
@@ -338,6 +341,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First True/False statement",
             "options": ["True", "False"],
             "correct_answer": 1,
@@ -347,6 +351,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second True/False statement",
             "options": ["True", "False"],
             "correct_answer": 0,
@@ -400,6 +405,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "Open-ended question requiring written response",
             "key_points": [
                 "First key concept to address",
@@ -456,6 +462,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "MCQ question text",
             "options": ["A", "B", "C", "D"],
             "correct_answer": 1,
@@ -465,6 +472,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "True/False question text",
             "options": ["True", "False"],
             "correct_answer": 0,
@@ -542,6 +550,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "Essay/short answer question based on content",
             "key_points": ["Point 1 from text", "Point 2 from text", "Point 3 from text"],
             "suggested_length": "2-3 paragraphs",
@@ -592,6 +601,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "MCQ question text based on content",
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correct_answer": 2,
@@ -601,6 +611,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "True/False question text based on content",
             "options": ["True", "False"],
             "correct_answer": 1,
@@ -654,6 +665,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First statement based on text",
             "options": ["True", "False"],
             "correct_answer": 1,
@@ -663,6 +675,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second statement based on text",
             "options": ["True", "False"],
             "correct_answer": 0,
@@ -716,6 +729,7 @@ OUTPUT FORMAT (JSON ONLY):
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First question based on content",
             "options": ["A", "B", "C", "D"],
             "correct_answer": 3,
@@ -725,6 +739,7 @@ OUTPUT FORMAT (JSON ONLY):
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second question based on content",
             "options": ["A", "B", "C", "D"],
             "correct_answer": 1,
@@ -764,6 +779,7 @@ Format as JSON:
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "Essay question",
             "key_points": ["Point 1", "Point 2"],
             "suggested_length": "Length",
@@ -798,6 +814,7 @@ Format as JSON:
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First statement",
             "options": ["True", "False"],
             "correct_answer": 1,
@@ -807,6 +824,7 @@ Format as JSON:
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second statement",
             "options": ["True", "False"],
             "correct_answer": 0,
@@ -844,6 +862,7 @@ Format as JSON:
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "MCQ question",
             "options": ["Option A", "Option B", "Option C", "Option D"], 
             "correct_answer": 2,
@@ -853,6 +872,7 @@ Format as JSON:
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "True/False question",
             "options": ["True", "False"],
             "correct_answer": 1,
@@ -890,6 +910,7 @@ Format as JSON:
 {{
     "questions": [
         {{
+            "question_type": "text",
             "question": "First question",
             "options": ["A", "B", "C", "D"],
             "correct_answer": 3,
@@ -899,6 +920,7 @@ Format as JSON:
             "cognitive_level": "remember"
         }},
         {{
+            "question_type": "text",
             "question": "Second question",
             "options": ["A", "B", "C", "D"],
             "correct_answer": 1,
@@ -1500,18 +1522,20 @@ def get_image_question_system_message() -> str:
 
 Your task is to create questions that test understanding of diagrams, charts, and visual content.
 
-IMPORTANT GUIDELINES:
-1. Use the image text (OCR extracted labels/text from the image)
-2. Use the full page context for deeper understanding
-3. Create questions that require visual comprehension
-4. Questions should reference specific parts of the image
-5. Ensure questions are meaningful and educational
+IMPORTANT CRITICAL CONTEXT:
+1. The student sees the image with **ALL TEXT/LABELS REMOVED** (hidden).
+2. You have access to the original text (OCR) so YOU know what the image shows.
+3. The student MUST visually recognize the structure/diagram without reading labels.
+4. Do NOT refer to specific labels like "What is label A?" unless you are certain markers exist.
+5. Instead, ask them to IDENTIFY the structure shown, or deduce its properties.
+
+GOAL: Test if the student can recognize the visual indications without textual help.
 
 QUESTION TYPES:
-• Identification: "What structure is labeled as X?"
-• Function: "What is the function of the labeled Y?"
-• Relationship: "How does structure A relate to structure B?"
-• Analysis: "Based on the diagram, what would happen if...?"
+• Identification: "The image shows a specific structure. Identify it."
+• Description: "Which statement best describes the diagram shown?"
+• Function: "What is the primary function of the organelle depicted?"
+• Pathology: "What condition is suggested by the visual appearance shown?"
 
 OUTPUT FORMAT:
 {
@@ -1519,10 +1543,11 @@ OUTPUT FORMAT:
     {
       "question_type": "image",
       "question_category": "standard|critical|linking",
-      "question_text": "Question referencing the image",
-      "options": ["A", "B", "C", "D"],
-      "correct_answer": "B",
-      "explanation": "Why this answer is correct",
+      "cognitive_level": "remember|understand|analyze|evaluate",
+      "question": "Question referencing the image",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_answer": 1,
+      "explanation_en": "Why this answer is correct",
       "explanation_ar": "Explanation in Egyptian Arabic"
     }
   ]
@@ -1531,10 +1556,10 @@ OUTPUT FORMAT:
 NOTE: Do NOT include the image in your response. The image will be added automatically.
 
 QUALITY REQUIREMENTS:
-✓ Questions must be clear and specific
-✓ Reference actual content from image text
-✓ Use page context for richer questions
-✓ Avoid ambiguous or trivial questions
+✓ Questions must valid even without seeing the original labels
+✓ Focus on *visual recognition* and *conceptual understanding*
+✓ Use the hidden text to confirm what the subject is, then ask about it
+✓ Avoid "What does the text say?" type questions
 ✓ Maintain proper difficulty level"""
 
 
@@ -1590,17 +1615,17 @@ Question Type: Multiple Choice (image-based)
 📝 INSTRUCTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. Create questions that reference specific elements from the image text
-2. Use the page context to create more meaningful questions
-3. Ensure questions test visual comprehension
+1. The provided "TEXT EXTRACTED FROM IMAGE" is HIDDEN from the student
+2. Use that hidden text to understand WHAT the image is
+3. Create questions that require identifying the subject VISUALLY
 4. Include 4 plausible options (A, B, C, D)
 5. Provide clear explanations for the correct answer
 6. Include Egyptian Arabic explanation with English medical terms
 
 EXAMPLE QUESTION PATTERNS:
-✓ "According to the diagram, what is [structure/label]?"
-✓ "Based on the labeled image, what is the function of [component]?"
-✓ "The image shows [X]. How does it relate to [Y]?"
-✓ "What would happen if [element from image] was affected?"
+✓ "Identify the organ shown in this diagram."
+✓ "The medical scan above depicts which condition?"
+✓ "What is the primary function of the structure shown?"
+✓ "Which of the following characteristics best describes the image content?"
 
 Return ONLY valid JSON. DO NOT include ```json``` markers."""
