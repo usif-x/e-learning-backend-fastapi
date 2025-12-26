@@ -135,7 +135,7 @@ class PDFTextProcessorMixin:
                 status_code=400, detail=f"Failed to process PDF file: {str(e)}"
             )
         finally:
-            await file.seek(0)
+            file.seek(0)
 
     async def extract_text_from_pdf_path(self, pdf_path: str) -> str:
         """
@@ -538,7 +538,7 @@ class PDFTextProcessorMixin:
                 explained_pages.extend(batch_explained)
 
         # Reset file pointer
-        await file.seek(0)
+        file.seek(0)
 
         return {
             "pages": explained_pages,

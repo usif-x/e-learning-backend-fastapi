@@ -216,7 +216,7 @@ class PDFImageGeneratorMixin:
                         continue
 
             doc.close()
-            await file.seek(0)
+            file.seek(0)
 
             if not all_questions:
                 logger.warning("No images with text found in PDF")
@@ -234,7 +234,7 @@ class PDFImageGeneratorMixin:
                 detail=f"Failed to process PDF file for images: {str(e)}",
             )
         finally:
-            await file.seek(0)
+            file.seek(0)
 
     async def generate_questions_from_pdf_path_images(
         self,
@@ -499,13 +499,16 @@ class PDFImageGeneratorMixin:
             # Second pass: Use OCR for pages with no text or very short text
             # This matches logic in app/utils/ai_component/pdf_text.py
             pages_with_short_text = [
-                p_num for p_num, content in pages_content.items() 
+                p_num
+                for p_num, content in pages_content.items()
                 if len(content.split()) < 5
             ]
-            
+
             # Combine pages that need OCR
-            pages_needing_ocr = sorted(set(pages_with_no_text) | set(pages_with_short_text))
-            
+            pages_needing_ocr = sorted(
+                set(pages_with_no_text) | set(pages_with_short_text)
+            )
+
             if pages_needing_ocr:
                 logger.info(f"Using OCR for pages: {pages_needing_ocr}")
                 try:
@@ -524,7 +527,7 @@ class PDFImageGeneratorMixin:
                             ocr_text = pytesseract.image_to_string(
                                 image, lang="eng+ara"
                             )
-                            
+
                             if ocr_text and ocr_text.strip():
                                 ocr_text = ocr_text.strip()
                                 # Only use OCR text if it yields substantive content (>= 5 words)
@@ -533,7 +536,9 @@ class PDFImageGeneratorMixin:
                                     # Remove from no_text list if it was there
                                     if page_num in pages_with_no_text:
                                         pages_with_no_text.remove(page_num)
-                                    logger.info(f"Replaced/Added text on page {page_num} with OCR content")
+                                    logger.info(
+                                        f"Replaced/Added text on page {page_num} with OCR content"
+                                    )
                                 else:
                                     # Still empty/short after OCR
                                     if page_num in pages_with_no_text:
@@ -547,7 +552,7 @@ class PDFImageGeneratorMixin:
                                 skip_pages.add(page_num)
                             continue
                 except Exception as e:
-                     logger.warning(f"Failed to setup OCR: {str(e)}")
+                    logger.warning(f"Failed to setup OCR: {str(e)}")
 
             # Apply robust filtering (Title, Keywords, Conclusion)
             skip_keywords = [
@@ -586,7 +591,7 @@ class PDFImageGeneratorMixin:
 
             for page_num, content in list(pages_content.items()):
                 content_lower = content.lower()
-                
+
                 # Filter 1: Too short
                 if len(content_lower.split()) < 5:
                     logger.info(f"Skipping page {page_num}: too short")
@@ -597,7 +602,9 @@ class PDFImageGeneratorMixin:
                 should_skip = False
                 for keyword in skip_keywords:
                     if keyword.lower() in content_lower:
-                        logger.info(f"Skipping page {page_num}: matches keyword '{keyword}'")
+                        logger.info(
+                            f"Skipping page {page_num}: matches keyword '{keyword}'"
+                        )
                         skip_pages.add(page_num)
                         should_skip = True
                         break
@@ -609,7 +616,7 @@ class PDFImageGeneratorMixin:
                     logger.info(f"Skipping page {page_num}: likely title page")
                     skip_pages.add(page_num)
                     continue
-                
+
                 # Filter 4: Conclusion/Last Page
                 if page_num == doc.page_count and len(content_lower.split()) < 30:
                     logger.info(f"Skipping page {page_num}: likely conclusion page")
@@ -622,7 +629,9 @@ class PDFImageGeneratorMixin:
             valid_pages = sorted(
                 [p for p in pages_content.keys() if p not in skip_pages]
             )
-            logger.info(f"Pages to use: {valid_pages} (skipped: {sorted(list(skip_pages))})")
+            logger.info(
+                f"Pages to use: {valid_pages} (skipped: {sorted(list(skip_pages))})"
+            )
 
             if not valid_pages:
                 raise HTTPException(
@@ -638,7 +647,7 @@ class PDFImageGeneratorMixin:
                 status_code=400, detail=f"Failed to process PDF: {str(e)}"
             )
         finally:
-            await file.seek(0)
+            file.seek(0)
 
         # Step 1: Generate normal text-based questions
         # Note: We pass the ORIGINAL file. If we wanted to enforce filtering on text questions,
@@ -654,7 +663,7 @@ class PDFImageGeneratorMixin:
         )
 
         # Reset file pointer for image processing
-        await file.seek(0)
+        file.seek(0)
 
         # Step 2: Generate image-based questions from THE SAME filtered pages
         logger.info(
@@ -764,7 +773,7 @@ class PDFImageGeneratorMixin:
             image_questions = []
 
         finally:
-            await file.seek(0)
+            file.seek(0)
 
         # Step 3: Merge questions
         logger.info("Step 3/3: Merging questions...")
