@@ -196,7 +196,9 @@ def create_content(
         if content.content_type == "quiz" and content.questions
         else 0
     )
-    response = content.__class__.from_orm(content)
+    from app.schemas.lecture import LectureContentResponse
+
+    response = LectureContentResponse.model_validate(content)
     response_dict = response.model_dump()
     response_dict["question_count"] = question_count
     return response_dict
@@ -224,13 +226,15 @@ def list_contents(
     )
     # Add question_count for each content
     contents_with_count = []
+    from app.schemas.lecture import LectureContentResponse
+
     for content in contents:
         question_count = (
             len(content.questions)
             if content.content_type == "quiz" and content.questions
             else 0
         )
-        response = content.__class__.from_orm(content)
+        response = LectureContentResponse.model_validate(content)
         response_dict = response.model_dump()
         response_dict["question_count"] = question_count
         contents_with_count.append(response_dict)
@@ -266,7 +270,9 @@ def get_content(
         if content.content_type == "quiz" and content.questions
         else 0
     )
-    response = content.__class__.from_orm(content)
+    from app.schemas.lecture import LectureContentResponse
+
+    response = LectureContentResponse.model_validate(content)
     response_dict = response.model_dump()
     response_dict["question_count"] = question_count
     return response_dict
