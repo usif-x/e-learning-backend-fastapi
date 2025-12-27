@@ -149,7 +149,7 @@ class LectureContentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     question_count: Optional[int] = None
-    user_analytics: Optional[QuizUserAnalytics] = None
+    user_analytics: Optional["QuizUserAnalytics"] = None
 
 
 class QuizContentResponse(LectureContentResponse):
