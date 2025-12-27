@@ -149,8 +149,9 @@ def get_course(
             detail="Course not found",
         )
 
-    # Auto-enroll in free courses if user is authenticated
-    if current_user and course.is_free:
+    # Check if user is subscribed to the course
+    is_subscribed = False
+    if current_user:
         from sqlalchemy import and_, func
 
         from app.models.course_enrollment import CourseEnrollment
@@ -168,8 +169,10 @@ def get_course(
             .first()
         )
 
-        # Auto-enroll if not already enrolled
-        if not existing_enrollment:
+        if existing_enrollment:
+            is_subscribed = True
+        # Auto-enroll in free courses if user is authenticated and not enrolled
+        elif course.is_free:
             # Get total lectures count
             total_lectures = (
                 db.query(func.count(Lecture.id))
@@ -190,8 +193,13 @@ def get_course(
             )
             db.add(new_enrollment)
             db.commit()
+            is_subscribed = True
 
-    return course
+    # Convert course to dict and add is_subscribed field
+    course_dict = CourseResponse.model_validate(course).model_dump()
+    course_dict["is_subscribed"] = is_subscribed if current_user else None
+
+    return course_dict
 
 
 @router.patch("/{course_id}", response_model=CourseResponse)

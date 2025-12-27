@@ -45,6 +45,7 @@ class CourseResponse(CourseBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    is_subscribed: Optional[bool] = None
 
 
 class CourseListResponse(BaseModel):
