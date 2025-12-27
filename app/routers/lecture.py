@@ -189,7 +189,19 @@ def list_contents(
     contents, pagination = service.get_contents(
         lecture_id, course_id, page, size, content_type
     )
-    return {"contents": contents, **pagination}
+    # Add question_count for each content
+    contents_with_count = []
+    for content in contents:
+        question_count = (
+            len(content.questions)
+            if content.content_type == "quiz" and content.questions
+            else 0
+        )
+        response = content.__class__.from_orm(content)
+        response_dict = response.model_dump()
+        response_dict["question_count"] = question_count
+        contents_with_count.append(response_dict)
+    return {"contents": contents_with_count, **pagination}
 
 
 @router.get(
