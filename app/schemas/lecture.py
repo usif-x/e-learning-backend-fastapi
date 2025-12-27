@@ -148,12 +148,14 @@ class LectureContentResponse(BaseModel):
     position: int
     created_at: datetime
     updated_at: datetime
+    question_count: Optional[int] = None
 
 
 class QuizContentResponse(LectureContentResponse):
     """Response for quiz content when starting an attempt - includes questions WITHOUT answers"""
 
     questions: Optional[List[QuizQuestionForAttempt]] = None
+    question_count: Optional[int] = None
 
 
 # ==================== Lecture Schemas ====================

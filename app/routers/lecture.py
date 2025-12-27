@@ -156,7 +156,17 @@ def create_content(
     Admin only.
     """
     service = LectureService(db)
-    return service.create_content(lecture_id, course_id, content_in)
+    content = service.create_content(lecture_id, course_id, content_in)
+    # Add question_count for quiz content
+    question_count = (
+        len(content.questions)
+        if content.content_type == "quiz" and content.questions
+        else 0
+    )
+    response = content.__class__.from_orm(content)
+    response_dict = response.model_dump()
+    response_dict["question_count"] = question_count
+    return response_dict
 
 
 @router.get("/{lecture_id}/contents", response_model=LectureContentListResponse)
@@ -205,7 +215,16 @@ def get_content(
             detail="Content not found",
         )
 
-    return content
+    # Add question_count for quiz content
+    question_count = (
+        len(content.questions)
+        if content.content_type == "quiz" and content.questions
+        else 0
+    )
+    response = content.__class__.from_orm(content)
+    response_dict = response.model_dump()
+    response_dict["question_count"] = question_count
+    return response_dict
 
 
 # ==================== Admin Quiz Question Management ====================
