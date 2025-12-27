@@ -75,15 +75,17 @@ def list_lectures(
     service = LectureService(db)
     lectures, pagination = service.get_lectures(course_id, page, size)
     lectures_with_counts = []
+    from app.schemas.lecture import LectureContentResponse, LectureResponse
+
     for lecture in lectures:
-        # Convert to dict and set question_count for each content
-        lecture_data = lecture.__class__.from_orm(lecture).model_dump()
+        # Use Pydantic schema for serialization
+        lecture_data = LectureResponse.model_validate(lecture).model_dump()
         contents_with_count = []
-        for content in lecture_data.get("contents", []):
-            # If content_type is quiz and questions exist, count them
+        for content_obj in getattr(lecture, "contents", []):
+            content = LectureContentResponse.model_validate(content_obj).model_dump()
             question_count = 0
             if content.get("content_type") == "quiz":
-                questions = content.get("questions")
+                questions = content_obj.questions
                 if questions is not None:
                     question_count = len(questions)
             content["question_count"] = question_count
@@ -110,12 +112,15 @@ def get_lecture(
         )
 
     # Convert to dict and set question_count for each content
-    lecture_data = lecture.__class__.from_orm(lecture).model_dump()
+    from app.schemas.lecture import LectureContentResponse, LectureResponse
+
+    lecture_data = LectureResponse.model_validate(lecture).model_dump()
     contents_with_count = []
-    for content in lecture_data.get("contents", []):
+    for content_obj in getattr(lecture, "contents", []):
+        content = LectureContentResponse.model_validate(content_obj).model_dump()
         question_count = 0
         if content.get("content_type") == "quiz":
-            questions = content.get("questions")
+            questions = content_obj.questions
             if questions is not None:
                 question_count = len(questions)
         content["question_count"] = question_count
