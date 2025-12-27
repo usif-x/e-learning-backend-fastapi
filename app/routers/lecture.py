@@ -74,7 +74,23 @@ def list_lectures(
     """
     service = LectureService(db)
     lectures, pagination = service.get_lectures(course_id, page, size)
-    return {"lectures": lectures, **pagination}
+    lectures_with_counts = []
+    for lecture in lectures:
+        # Convert to dict and set question_count for each content
+        lecture_data = lecture.__class__.from_orm(lecture).model_dump()
+        contents_with_count = []
+        for content in lecture_data.get("contents", []):
+            # If content_type is quiz and questions exist, count them
+            question_count = 0
+            if content.get("content_type") == "quiz":
+                questions = content.get("questions")
+                if questions is not None:
+                    question_count = len(questions)
+            content["question_count"] = question_count
+            contents_with_count.append(content)
+        lecture_data["contents"] = contents_with_count
+        lectures_with_counts.append(lecture_data)
+    return {"lectures": lectures_with_counts, **pagination}
 
 
 @router.get("/{lecture_id}", response_model=LectureResponse)
@@ -93,7 +109,19 @@ def get_lecture(
             detail="Lecture not found",
         )
 
-    return lecture
+    # Convert to dict and set question_count for each content
+    lecture_data = lecture.__class__.from_orm(lecture).model_dump()
+    contents_with_count = []
+    for content in lecture_data.get("contents", []):
+        question_count = 0
+        if content.get("content_type") == "quiz":
+            questions = content.get("questions")
+            if questions is not None:
+                question_count = len(questions)
+        content["question_count"] = question_count
+        contents_with_count.append(content)
+    lecture_data["contents"] = contents_with_count
+    return lecture_data
 
 
 @router.patch("/{lecture_id}", response_model=LectureResponse)
