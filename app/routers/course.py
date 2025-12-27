@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_admin, get_optional_user
 from app.models.admin import Admin
 from app.models.course import Course
+from app.models.course_enrollment import CourseEnrollment
 from app.models.user import User
 from app.schemas.course import (
     CourseCreate,
@@ -82,7 +83,26 @@ def search_courses(
         is_pinned=None,  # Don't filter by pinned in search
         sellable=sellable,
     )
-    return {"courses": courses, **pagination}
+
+    # Get enrolled course IDs for the current user
+    enrolled_course_ids = set()
+    if current_user:
+        enrolled_course_ids = {
+            enrollment.course_id
+            for enrollment in db.query(CourseEnrollment)
+            .filter(CourseEnrollment.user_id == current_user.id)
+            .all()
+        }
+
+    # Add is_subscribed to each course
+    courses_data = []
+    for course in courses:
+        is_subscribed = course.id in enrolled_course_ids if current_user else None
+        course_response = CourseResponse.model_validate(course)
+        course_response.is_subscribed = is_subscribed
+        courses_data.append(course_response)
+
+    return {"courses": courses_data, **pagination}
 
 
 # ==================== Course Endpoints ====================
@@ -126,7 +146,26 @@ def list_courses(
         is_pinned=is_pinned,
         sellable=sellable,
     )
-    return {"courses": courses, **pagination}
+
+    # Get enrolled course IDs for the current user
+    enrolled_course_ids = set()
+    if current_user:
+        enrolled_course_ids = {
+            enrollment.course_id
+            for enrollment in db.query(CourseEnrollment)
+            .filter(CourseEnrollment.user_id == current_user.id)
+            .all()
+        }
+
+    # Add is_subscribed to each course
+    courses_data = []
+    for course in courses:
+        is_subscribed = course.id in enrolled_course_ids if current_user else None
+        course_response = CourseResponse.model_validate(course)
+        course_response.is_subscribed = is_subscribed
+        courses_data.append(course_response)
+
+    return {"courses": courses_data, **pagination}
 
 
 @router.get("/{course_id}", response_model=CourseResponse)
