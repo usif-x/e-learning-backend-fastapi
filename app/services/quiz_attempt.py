@@ -383,6 +383,87 @@ class QuizAttemptService:
             passed=passed,
         )
 
+    def get_user_analytics(self, content_id: int, user_id: int) -> Optional[dict]:
+        """Get detailed user analytics for a specific quiz content"""
+        from app.schemas.lecture import QuizUserAnalytics
+
+        # Get quiz content for passing score
+        content = (
+            self.db.query(LectureContent)
+            .filter(LectureContent.id == content_id)
+            .first()
+        )
+
+        if not content:
+            return None
+
+        # Get all completed attempts for detailed analytics
+        attempts = (
+            self.db.query(QuizAttempt)
+            .filter(
+                and_(
+                    QuizAttempt.content_id == content_id,
+                    QuizAttempt.user_id == user_id,
+                    QuizAttempt.is_completed == 1,
+                )
+            )
+            .all()
+        )
+
+        if not attempts:
+            return None
+
+        total_attempts = len(attempts)
+        scores = [
+            float(attempt.score) for attempt in attempts if attempt.score is not None
+        ]
+
+        if not scores:
+            return None
+
+        best_score = max(scores)
+        lowest_score = min(scores)
+        average_score = sum(scores) / len(scores)
+
+        # Calculate best average question time (fastest time per question)
+        best_avg_question_time = None
+        total_time_spent = 0
+
+        for attempt in attempts:
+            if (
+                attempt.time_taken
+                and attempt.total_questions
+                and attempt.total_questions > 0
+            ):
+                avg_time = attempt.time_taken / attempt.total_questions
+                if best_avg_question_time is None or avg_time < best_avg_question_time:
+                    best_avg_question_time = avg_time
+                total_time_spent += attempt.time_taken
+
+        average_time_per_attempt = (
+            total_time_spent / total_attempts if total_attempts > 0 else None
+        )
+
+        # Get last attempt timestamp
+        last_attempt_at = max(
+            attempt.completed_at for attempt in attempts if attempt.completed_at
+        )
+
+        # Check if user passed
+        passed = best_score >= (content.passing_score or 0)
+
+        return QuizUserAnalytics(
+            total_attempts=total_attempts,
+            best_score=best_score,
+            lowest_score=lowest_score,
+            average_score=average_score,
+            best_avg_question_time=best_avg_question_time,
+            last_attempt_at=last_attempt_at,
+            passed=passed,
+            total_time_spent=total_time_spent,
+            average_time_per_attempt=average_time_per_attempt,
+        )
+
     def get_all_user_attempts(
         self,
         user_id: int,

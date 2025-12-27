@@ -149,6 +149,7 @@ class LectureContentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     question_count: Optional[int] = None
+    user_analytics: Optional[QuizUserAnalytics] = None
 
 
 class QuizContentResponse(LectureContentResponse):
@@ -271,6 +272,20 @@ class QuizAttemptStats(BaseModel):
     average_score: Optional[float] = None
     last_attempt_at: Optional[datetime] = None
     passed: bool = False
+
+
+class QuizUserAnalytics(BaseModel):
+    """User analytics for quiz content"""
+
+    total_attempts: int
+    best_score: Optional[float] = None
+    lowest_score: Optional[float] = None
+    average_score: Optional[float] = None
+    best_avg_question_time: Optional[float] = None  # seconds per question
+    last_attempt_at: Optional[datetime] = None
+    passed: bool = False
+    total_time_spent: Optional[int] = None  # total seconds across all attempts
+    average_time_per_attempt: Optional[float] = None  # average seconds per attempt
 
 
 class StartQuizResponse(BaseModel):

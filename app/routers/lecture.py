@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin, get_current_user
+from app.core.dependencies import get_current_admin, get_current_user, get_optional_user
 from app.models.admin import Admin
 from app.models.quiz_attempt import QuizAttempt
 from app.models.user import User
@@ -27,6 +27,7 @@ from app.schemas.lecture import (
     QuizAttemptResponse,
     QuizAttemptStats,
     QuizQuestion,
+    QuizUserAnalytics,
     StartQuizResponse,
 )
 from app.schemas.quiz_source import QuizSourceCreate
@@ -67,6 +68,7 @@ def list_lectures(
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get all lectures for a course.
@@ -89,6 +91,16 @@ def list_lectures(
                 if questions is not None:
                     question_count = len(questions)
             content["question_count"] = question_count
+
+            # Add user analytics for quiz content if user is authenticated
+            if current_user and content.get("content_type") == "quiz":
+                quiz_service = QuizAttemptService(db)
+                analytics = quiz_service.get_user_analytics(
+                    content_obj.id, current_user.id
+                )
+                if analytics:
+                    content["user_analytics"] = analytics.model_dump()
+
             contents_with_count.append(content)
         lecture_data["contents"] = contents_with_count
         lectures_with_counts.append(lecture_data)
@@ -100,6 +112,7 @@ def get_lecture(
     course_id: int,
     lecture_id: int,
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Get a specific lecture by ID"""
     service = LectureService(db)
@@ -124,6 +137,14 @@ def get_lecture(
             if questions is not None:
                 question_count = len(questions)
         content["question_count"] = question_count
+
+        # Add user analytics for quiz content if user is authenticated
+        if current_user and content.get("content_type") == "quiz":
+            quiz_service = QuizAttemptService(db)
+            analytics = quiz_service.get_user_analytics(content_obj.id, current_user.id)
+            if analytics:
+                content["user_analytics"] = analytics.model_dump()
+
         contents_with_count.append(content)
     lecture_data["contents"] = contents_with_count
     return lecture_data
@@ -201,6 +222,7 @@ def create_content(
     response = LectureContentResponse.model_validate(content)
     response_dict = response.model_dump()
     response_dict["question_count"] = question_count
+    # Note: No user analytics for newly created content
     return response_dict
 
 
@@ -214,6 +236,7 @@ def list_contents(
         None, pattern="^(video|photo|file|audio|link|quiz)$"
     ),
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get all contents for a lecture.
@@ -224,7 +247,7 @@ def list_contents(
     contents, pagination = service.get_contents(
         lecture_id, course_id, page, size, content_type
     )
-    # Add question_count for each content
+    # Add question_count and user_analytics for each content
     contents_with_count = []
     from app.schemas.lecture import LectureContentResponse
 
@@ -237,6 +260,14 @@ def list_contents(
         response = LectureContentResponse.model_validate(content)
         response_dict = response.model_dump()
         response_dict["question_count"] = question_count
+
+        # Add user analytics for quiz content if user is authenticated
+        if current_user and content.content_type == "quiz":
+            quiz_service = QuizAttemptService(db)
+            analytics = quiz_service.get_user_analytics(content.id, current_user.id)
+            if analytics:
+                response_dict["user_analytics"] = analytics.model_dump()
+
         contents_with_count.append(response_dict)
     return {"contents": contents_with_count, **pagination}
 
@@ -249,6 +280,7 @@ def get_content(
     lecture_id: int,
     content_id: int,
     db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """Get a specific content item by ID"""
     service = LectureService(db)
@@ -275,6 +307,14 @@ def get_content(
     response = LectureContentResponse.model_validate(content)
     response_dict = response.model_dump()
     response_dict["question_count"] = question_count
+
+    # Add user analytics for quiz content if user is authenticated
+    if current_user and content.content_type == "quiz":
+        quiz_service = QuizAttemptService(db)
+        analytics = quiz_service.get_user_analytics(content.id, current_user.id)
+        if analytics:
+            response_dict["user_analytics"] = analytics.model_dump()
+
     return response_dict
 
 
