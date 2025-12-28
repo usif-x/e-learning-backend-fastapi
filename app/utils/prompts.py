@@ -943,15 +943,56 @@ def get_explanation_system_message():
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1. LANGUAGE: Explain in Egyptian Arabic dialect only (اللغة المصرية العامية)
-2. MEDICAL TERMS: Keep all medical and scientific terms in English as they are, and BOLD them with **asterisks**
-   ✓ Examples: "**diabetes**", "**hypertension**", "**myocardial infarction**", "**electrocardiogram**"
-   ✓ Do NOT translate these terms - keep them in English and bold them
-   ✓ Bold ALL medical/scientific terms: "**monosaccharides**", "**homeostasis**", "**glucose**", etc.
 
-3. CLARITY: Use simple, clear Egyptian Arabic that students understand
-4. STRUCTURE: Explain concepts step by step with logical flow
-5. EXAMPLES: Include practical examples when relevant
-6. CONNECTIONS: Show how concepts relate to each other
+2. MEDICAL TERMS: Keep all medical and scientific terms in English and BOLD them with **asterisks**
+   ✓ Examples: "**diabetes**", "**hypertension**", "**myocardial infarction**"
+   ✓ Do NOT translate these terms - keep them in English and bold them
+
+3. MARKDOWN FORMATTING: Use rich markdown formatting for better UI:
+   ✓ Headers: ## للعناوين الرئيسية, ### للعناوين الفرعية
+   ✓ Lists: استخدم - للـ bullet points و 1. للترقيم
+   ✓ Tables: استخدم جداول markdown للمقارنات والبيانات المنظمة
+   ✓ Bold: **للتأكيد** على النقاط المهمة
+   ✓ Code blocks: ` للمصطلحات الخاصة لو محتاج
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 CONTENT STRUCTURE (لكل صفحة)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+رتب المحتوى في كل صفحة بالترتيب ده:
+
+### 1️⃣ الشرح الأساسي
+- اشرح المفاهيم الرئيسية بوضوح
+- استخدم أمثلة عملية من الحياة
+- اربط المعلومات ببعضها
+
+### 2️⃣ 🔑 النقاط المهمة (Key Points)
+اعمل قائمة بأهم النقاط اللي لازم الطالب يركز عليها:
+- **النقطة الأولى**: الشرح
+- **النقطة التانية**: الشرح
+- **النقطة التالتة**: الشرح
+
+### 3️⃣ 📊 جداول المقارنة (لو موجود مقارنات)
+لو في مقارنات بين مفاهيم أو أمراض أو علاجات، اعمل جدول:
+
+| المقارنة | الخيار الأول | الخيار التاني |
+|---------|-------------|--------------|
+| **الميزة 1** | ... | ... |
+| **الميزة 2** | ... | ... |
+
+### 4️⃣ 💡 نصائح للحفظ (Memory Tips)
+ساعد الطالب يحفظ المعلومات:
+- استخدم اختصارات **Mnemonics** بالعربي (لو ممكن)
+- اعمل قصص أو ربط للمعلومات
+- وضّح العلاقات المنطقية
+
+### 5️⃣ ⚠️ أخطاء شائعة (Common Mistakes)
+لو في أخطاء شائعة في فهم الموضوع، وضّحها:
+- ❌ **الخطأ**: ...
+- ✅ **الصح**: ...
+
+### 6️⃣ 📝 ملخص سريع (Quick Summary)
+ملخص في 3-4 نقاط لأهم حاجة في الصفحة دي
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 EGYPTIAN ARABIC STYLE
@@ -962,56 +1003,85 @@ Use natural Egyptian Arabic like:
 ✓ "مثلاً" (for example)
 ✓ "المهم" (important)
 ✓ "لو عايز تفهم" (if you want to understand)
-✓ "المشكلة إن" (the problem is)
-✓ "السبب" (the reason)
+✓ "المشكلة إن" (the problem)
+✓ "الفكرة" (the idea)
+✓ "ببساطة" (simply)
+✓ "عشان كده" (that's why)
 
-⚠️ IMPORTANT: Start directly with the explanation content. DO NOT use conversational openers like:
+⚠️ IMPORTANT: Start directly with content. NO conversational openers like:
 - "طيب يا جماعة" (Okay guys)
-- "هاشرحلكم" (Let me explain to you)
+- "هاشرحلكم" (Let me explain)
 - "في الصفحة دي" (In this page)
-- "محتوى الصفحة" (Page content)
-- Any phrases that reference "the page" or introduce the explanation
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 TABLE GUIDELINES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use tables for:
+✓ Comparing diseases, symptoms, treatments
+✓ Showing classifications
+✓ Listing drug doses or lab values
+✓ Organizing differential diagnoses
+✓ Comparing mechanisms of action
+
+Table format example:
+| المعيار | الحالة الأولى | الحالة التانية |
+|---------|--------------|----------------|
+| **Symptoms** | ... | ... |
+| **Treatment** | ... | ... |
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📤 OUTPUT FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY a JSON object with this exact structure:
+Return ONLY a JSON object:
 {
     "pages": [
         {
             "page_number": 1,
-            "explanation": "الشرح بالعربية المصرية هنا..."
-        },
-        {
-            "page_number": 2,
-            "explanation": "الشرح بالعربية المصرية هنا..."
+            "explanation": "## الموضوع الرئيسي\\n\\nالشرح الأساسي...\\n\\n### 🔑 النقاط المهمة\\n- **نقطة 1**\\n\\n### 📊 المقارنة\\n| ... | ... |\\n\\n### 💡 نصائح للحفظ\\n...\\n\\n### 📝 ملخص سريع\\n..."
         }
     ]
 }
 
-⚠️ IMPORTANT: Return ONLY the JSON object, no additional text or markdown."""
+⚠️ CRITICAL: 
+- Return ONLY the JSON object
+- Use \\n for line breaks in the explanation string
+- Escape quotes inside strings properly
+- All markdown formatting must be in the explanation string"""
 
 
 def get_explanation_prompt(
     detail_instruction, examples_instruction, merged_content, page_numbers
 ):
-    return f"""{detail_instruction} للمحتوى ده بالعربية المصرية بس، وابقِ المصطلحات الطبية زي ما هي بالإنجليزية{examples_instruction}:
+    return f"""{detail_instruction} للمحتوى ده بالعربية المصرية، وخلي المصطلحات الطبية بالإنجليزية ومكتوبة بـ **bold**{examples_instruction}:
 
 {merged_content}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-المطلوب: شرح واضح ومفيد للطلاب المصريين لكل صفحة.
+المطلوب لكل صفحة:
 
-أرجع JSON فيه شرح لكل صفحة من الصفحات: {page_numbers}
+✅ شرح واضح ومنظم بالماركداون
+✅ جداول مقارنة (لو في مقارنات)
+✅ النقاط المهمة مرتبة
+✅ نصائح للحفظ
+✅ ملخص سريع
+✅ أخطاء شائعة (لو موجودة)
 
-الformat المطلوب:
+أرجع JSON فيه شرح منظم لكل صفحة من الصفحات: {page_numbers}
+
+Format:
 {{
     "pages": [
-        {{"page_number": رقم_الصفحة, "explanation": "الشرح هنا..."}}
+        {{
+            "page_number": رقم_الصفحة,
+            "explanation": "## العنوان\\n\\nالشرح المنظم بالماركداون..."
+        }}
     ]
-}}"""
+}}
+
+تذكر: استخدم \\n للسطر الجديد في الـ JSON string"""
 
 
 def get_teaching_greeting_system_message(language, user_name, session_type):
