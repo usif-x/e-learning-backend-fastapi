@@ -442,9 +442,7 @@ class PDFTextProcessorMixin:
 
         # Process pages in batches to avoid timeout on large PDFs
         # Each batch will be sent as one request
-        BATCH_SIZE = (
-            10  # Process 10 pages per request - optimized for better throughput
-        )
+        BATCH_SIZE = 5  # Process 5 pages per request - optimized for better throughput
         MAX_BATCH_CONTENT_LENGTH = 8000  # Max chars per batch (smaller for reliability)
 
         explained_pages = []
