@@ -6,10 +6,18 @@ AI-powered educational content generation endpoints
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.orm import Session
 
+from app.core.database import get_db
 from app.core.dependencies import get_current_admin, get_current_user
 from app.models.admin import Admin
 from app.models.user import User
+from app.schemas.explained_ai import (
+    ExplainedAICreate,
+    ExplainedAIResponse,
+    ExplainedAIShareResponse,
+)
+from app.services.explained_ai import ExplainedAIService
 from app.utils.ai import ai_service
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -594,3 +602,152 @@ async def admin_generate_mixed_questions_from_pdf(
         "questions": result["questions"],
         "admin_id": current_admin.id,
     }
+
+
+# Explained AI Content Management Endpoints
+
+
+@router.post("/save-explained-content", response_model=ExplainedAIResponse)
+async def save_explained_content(
+    source: str = Form(...),
+    content: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Save explained AI content for a user.
+    If content with same source already exists for the user, it will be updated.
+
+    Args:
+        source: Unique identifier for the content (filename or topic name)
+        content: The explained content (JSON string)
+        current_user: Authenticated user
+
+    Returns:
+        Saved explained content details
+    """
+    if not source.strip():
+        raise HTTPException(status_code=400, detail="Source cannot be empty")
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    service = ExplainedAIService(db)
+    explained_ai = service.create_explained_content(
+        user_id=current_user.id,
+        source=source.strip(),
+        content=content.strip(),
+    )
+
+    return ExplainedAIResponse.model_validate(explained_ai)
+
+
+@router.post("/share-explained-content")
+async def share_explained_content(
+    explained_id: int = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a share link for explained content.
+
+    Args:
+        explained_id: ID of the explained content to share
+        current_user: Authenticated user (must be owner)
+
+    Returns:
+        Share link details
+    """
+    service = ExplainedAIService(db)
+    explained = service.get_by_id(explained_id)
+
+    if not explained:
+        raise HTTPException(status_code=404, detail="Explained content not found")
+
+    if explained.user_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="Not authorized to share this content"
+        )
+
+    share_link = service.generate_share_link(explained_id)
+    if not share_link:
+        raise HTTPException(status_code=500, detail="Failed to generate share link")
+
+    return {
+        "success": True,
+        "share_link": f"/ai/shared/{share_link}",
+        "full_url": f"{share_link}",  # Frontend can construct full URL
+        "explained_id": explained_id,
+    }
+
+
+@router.get("/shared/{share_link}", response_model=ExplainedAIShareResponse)
+async def get_shared_explained_content(
+    share_link: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Get shared explained content by share link (public access, no auth required).
+
+    Args:
+        share_link: The share link identifier
+
+    Returns:
+        Shared explained content
+    """
+    service = ExplainedAIService(db)
+    explained = service.get_by_share_link(share_link)
+
+    if not explained:
+        raise HTTPException(
+            status_code=404, detail="Shared content not found or not available"
+        )
+
+    return ExplainedAIShareResponse.model_validate(explained)
+
+
+@router.get("/my-explained-content", response_model=List[ExplainedAIResponse])
+async def get_my_explained_content(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all explained content for the current user.
+
+    Args:
+        current_user: Authenticated user
+
+    Returns:
+        List of user's explained content
+    """
+    service = ExplainedAIService(db)
+    explained_list = service.get_user_explained_content(current_user.id)
+
+    return [ExplainedAIResponse.model_validate(item) for item in explained_list]
+
+
+@router.delete("/explained-content/{explained_id}")
+async def delete_explained_content(
+    explained_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete explained content (only by owner).
+
+    Args:
+        explained_id: ID of the content to delete
+        current_user: Authenticated user (must be owner)
+
+    Returns:
+        Success message
+    """
+    service = ExplainedAIService(db)
+    success = service.delete_explained_content(explained_id, current_user.id)
+
+    if not success:
+        raise HTTPException(
+            status_code=404, detail="Content not found or not authorized"
+        )
+
+    return {"success": True, "message": "Content deleted successfully"}

@@ -11,6 +11,7 @@ from .community import Community
 from .community_member import CommunityMember
 from .course import Course
 from .course_enrollment import CourseEnrollment
+from .explained_ai import ExplainedAI
 from .lecture import Lecture
 from .lecture_content import LectureContent
 from .notification import Notification
@@ -40,6 +41,7 @@ __all__ = [
     "CommunityMember",
     "Course",
     "CourseEnrollment",
+    "ExplainedAI",
     "Lecture",
     "LectureContent",
     "Post",
