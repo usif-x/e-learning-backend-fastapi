@@ -9,6 +9,7 @@ from typing import Dict, List, Literal
 
 import fitz  # PyMuPDF
 import pytesseract
+from PIL import Image
 from dotenv import load_dotenv
 from openai import OpenAI
 from reportlab.lib import colors
