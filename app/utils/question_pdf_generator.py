@@ -236,8 +236,9 @@ def shuffle_mcq_answers(questions_data: Dict) -> Dict:
                             found = True
                             break
 
-                # Last resort: Default to A if we really can't find it
+                # Last resort: Default to A if we really can't find it, but log usage
                 if not found:
+                    logger.warning(f"Could not match answer '{raw_answer}' to options {q['options']}. Defaulting to A.")
                     q["answer"] = "A"
 
     return questions_data
@@ -297,7 +298,7 @@ def generate_questions(
         )
     else:
         type_constraints = (
-            "Generate a balanced mix of MCQ, True/False, and Essay questions."
+            "Generate a balanced mix of MCQ (approx 60%) and True/False (approx 40%) questions. DO NOT INCLUDE ESSAY QUESTIONS."
         )
 
     system_prompt = get_exam_generator_system_prompt(
@@ -606,7 +607,12 @@ def save_questions_to_pdf(
             opt_text_false = f'<font color="#2563EB"><b>●</b></font> <b>B.</b> False'
             q_content.append(Paragraph(opt_text_true, custom_styles["Option"]))
             q_content.append(Paragraph(opt_text_false, custom_styles["Option"]))
-            ans = "A" if q["answer"] == "True" else "B"
+            
+            # Case-insensitive check for True/False
+            ans_str = str(q.get("answer", "")).strip().lower()
+            # Check for various truthy representations
+            is_true = ans_str == "true" or ans_str == "t" or "true" in ans_str
+            ans = "A" if is_true else "B"
             answer_data.append([f"Q{idx}", ans, "T/F"])
 
         elif q["type"] == "essay":
