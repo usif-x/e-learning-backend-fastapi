@@ -21,7 +21,7 @@ worker_connections = 1000
 # Aggressive worker recycling to prevent memory leaks
 max_requests = 500  # Restart after 500 requests (was 1000)
 max_requests_jitter = 50
-timeout = 600  # 10 minutes - increased for long-running AI operations
+timeout = 1200  # 20 minutes - increased for long-running AI operations
 graceful_timeout = 30
 keepalive = 5
 
